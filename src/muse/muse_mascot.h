@@ -1,21 +1,22 @@
 #pragma once
 #include <lvgl.h>
 
-// Animated Muse mascot (Jolly-inspired) for the grinding screen.
-// An original rendition drawn entirely from LVGL primitives (no image
-// assets): a plush ivory bean with big eyes, rosy cheeks, and a smile.
+// Jolly frame player for the grinding screen.
 //
-// Idle: gentle bob, occasional blink.
-// Straining (while grinding): eyes squeezed shut (><), "o" mouth, brighter
-// blush, motion lines, and a full-body shudder — the visual gag being that
-// the real coffee grounds falling from the chute are the punchline. The
-// mascot itself stays clean: no feces drawn, ever.
+// Frames come from Meta's jollybot.gif, converted at build time by
+// tools/gen_jolly.py into src/muse/jolly_anim.c/h — both gitignored and
+// NEVER committed. The Jolly artwork is Meta-copyrighted (the gadget SDK's
+// Apache license does not cover it); the generated frames are for personal
+// use on the builder's own board only.
 //
-// Built entirely from LVGL primitives (no image assets). Animation runs on
-// an lv_timer at 10fps; tick() early-outs while the screen is hidden.
+// Idle: the authentic happy bounce loop.
+// Straining (while grinding): same frames, shaken side-to-side with a
+// squash-and-stretch pulse plus motion lines — the visual gag being that the
+// real coffee grounds falling from the chute are the punchline. The mascot
+// itself stays clean: no feces drawn, ever.
 class MuseMascot {
 public:
-    // Creates the mascot as a child of parent (expects a flex column).
+    // Creates the player as a child of parent (expects a flex column).
     void create(lv_obj_t* parent);
     // true while the grinder motor is running.
     void setStraining(bool straining);
@@ -23,20 +24,9 @@ public:
 private:
     static void timer_cb(lv_timer_t* t);
     void tick();
-    void applyState();
 
-    lv_obj_t* root = nullptr;   // flex item (static)
-    lv_obj_t* body = nullptr;   // inner container (animated x/y)
-    lv_obj_t* eye_l = nullptr;
-    lv_obj_t* eye_r = nullptr;
-    lv_obj_t* pupil_l = nullptr;
-    lv_obj_t* pupil_r = nullptr;
-    lv_obj_t* squint_l = nullptr; // ">" label
-    lv_obj_t* squint_r = nullptr; // "<" label
-    lv_obj_t* smile = nullptr;    // arc
-    lv_obj_t* o_mouth = nullptr;  // "o" label
-    lv_obj_t* cheek_l = nullptr;
-    lv_obj_t* cheek_r = nullptr;
+    lv_obj_t* root = nullptr;
+    lv_obj_t* img = nullptr;
     lv_obj_t* lines[6] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     bool straining = false;
     uint32_t frame = 0;
