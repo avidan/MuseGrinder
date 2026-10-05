@@ -13,6 +13,8 @@ private:
     bool visible;
     bool time_mode;
     float target_time_seconds_;
+    char displayed_weight_text[16];
+    int displayed_progress;
 
 public:
     void create() override;

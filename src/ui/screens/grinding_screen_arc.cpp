@@ -1,6 +1,7 @@
 #include "grinding_screen_arc.h"
 #include <Arduino.h>
 #include "../../config/constants.h"
+#include <cstring>
 
 void GrindingScreenArc::create() {
     screen = lv_obj_create(lv_scr_act());
@@ -49,6 +50,8 @@ void GrindingScreenArc::create() {
     lv_obj_set_style_text_font(weight_label, &lv_font_montserrat_56, 0);
     lv_obj_set_style_text_color(weight_label, lv_color_hex(THEME_COLOR_TEXT_PRIMARY), 0);
     lv_obj_center(weight_label);
+    std::snprintf(displayed_weight_text, sizeof(displayed_weight_text), "0.0g");
+    displayed_progress = 0;
     
     // MODIFIED: Ensure all child widgets pass click events to the parent screen
     for (uint32_t i = 0; i < lv_obj_get_child_cnt(screen); i++) {
@@ -98,22 +101,36 @@ void GrindingScreenArc::update_target_time(float seconds) {
 void GrindingScreenArc::update_current_weight(float weight) {
     char weight_text[16];
     snprintf(weight_text, sizeof(weight_text), SYS_WEIGHT_DISPLAY_FORMAT, weight);
+    if (std::strcmp(displayed_weight_text, weight_text) == 0) {
+        return;
+    }
+    std::snprintf(displayed_weight_text, sizeof(displayed_weight_text), "%s", weight_text);
     lv_label_set_text(weight_label, weight_text);
 }
 
 void GrindingScreenArc::update_tare_display() {
+    std::snprintf(displayed_weight_text, sizeof(displayed_weight_text), "TARE");
     lv_label_set_text(weight_label, "TARE");
+    displayed_progress = 0;
     lv_arc_set_value(progress_arc, 0);  // Reset arc to 0 during taring
 }
 
 void GrindingScreenArc::update_progress(int percent) {
+    if (displayed_progress == percent) {
+        return;
+    }
+    displayed_progress = percent;
     lv_arc_set_value(progress_arc, percent);
     if (time_mode && target_time_seconds_ > 0.0f && percent < 100) { // leave final weight visible when done
         // Show elapsed time in center instead of sensor weight
         float elapsed_s = (percent / 100.0f) * target_time_seconds_;
         char elapsed_text[16];
         snprintf(elapsed_text, sizeof(elapsed_text), "%.1fs", elapsed_s);
-        lv_label_set_text(weight_label, elapsed_text);
+        // Go through the text cache so a later weight update isn't skipped.
+        if (std::strcmp(displayed_weight_text, elapsed_text) != 0) {
+            std::snprintf(displayed_weight_text, sizeof(displayed_weight_text), "%s", elapsed_text);
+            lv_label_set_text(weight_label, elapsed_text);
+        }
     }
 }
 
