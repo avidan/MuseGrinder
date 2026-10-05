@@ -2,6 +2,7 @@
 #include <lvgl.h>
 #include "grinding_screen_base.h"
 #include "../../config/constants.h"
+#include "../../muse/muse_mascot.h"
 
 class GrindingScreenChart : public IGrindingScreen {
 private:
@@ -11,6 +12,7 @@ private:
     lv_obj_t* chart;
     lv_chart_series_t* weight_series;
     lv_chart_series_t* flow_rate_series;
+    MuseMascot mascot;
     bool visible;
     bool time_mode;
     
@@ -48,4 +50,5 @@ public:
 
     bool is_visible() const override { return visible; }
     lv_obj_t* get_screen() const override { return screen; }
+    void setStraining(bool straining) { mascot.setStraining(straining); }
 };
