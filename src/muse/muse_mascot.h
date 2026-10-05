@@ -1,11 +1,13 @@
 #pragma once
 #include <lvgl.h>
 
-// Animated Muse mascot for the grinding screen.
+// Animated Muse mascot (Jolly-inspired) for the grinding screen.
+// An original rendition drawn entirely from LVGL primitives (no image
+// assets): a plush ivory bean with big eyes, rosy cheeks, and a smile.
 //
-// Idle: happy face, gentle bob, occasional blink.
-// Straining (while grinding): eyes squeezed shut (><), "o" mouth, blush
-// cheeks, motion lines, and a full-body shudder — the visual gag being that
+// Idle: gentle bob, occasional blink.
+// Straining (while grinding): eyes squeezed shut (><), "o" mouth, brighter
+// blush, motion lines, and a full-body shudder — the visual gag being that
 // the real coffee grounds falling from the chute are the punchline. The
 // mascot itself stays clean: no feces drawn, ever.
 //
