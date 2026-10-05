@@ -3,9 +3,10 @@
 namespace {
 
 const lv_color_t INK = lv_color_hex(0x2A2A3C);
-const lv_color_t HEAD = lv_color_hex(0x8F9CF7);   // periwinkle, Muse-adjacent
-const lv_color_t BLUSH = lv_color_hex(0xF0A0B4);
-const lv_color_t SPEED = lv_color_hex(0xC9D2FF);
+const lv_color_t FUR = lv_color_hex(0xF3EDE0);    // plush ivory
+const lv_color_t FUR_EDGE = lv_color_hex(0xD9CFB8);
+const lv_color_t BLUSH = lv_color_hex(0xF2A0B4);
+const lv_color_t SPEED = lv_color_hex(0xB9C2E8);
 
 lv_obj_t* circle(lv_obj_t* parent, int x, int y, int d, lv_color_t c, lv_opa_t opa = LV_OPA_COVER) {
     lv_obj_t* o = lv_obj_create(parent);
@@ -51,25 +52,37 @@ void set_shown(lv_obj_t* o, bool shown) {
 
 void MuseMascot::create(lv_obj_t* parent) {
     root = lv_obj_create(parent);
-    lv_obj_set_size(root, 120, 112);
+    lv_obj_set_size(root, 120, 118);
     transparent(root);
 
     // Inner body: this is what shakes. Root stays put for the flex layout.
     body = lv_obj_create(root);
-    lv_obj_set_size(body, 120, 112);
+    lv_obj_set_size(body, 120, 118);
     lv_obj_set_pos(body, 0, 0);
     transparent(body);
 
-    // Head
-    circle(body, 16, 8, 88, HEAD);
-    circle(body, 34, 22, 18, lv_color_hex(0xFFFFFF), LV_OPA_40); // gloss
+    // Bean body: plush ivory, slightly taller than wide, soft fur edge.
+    lv_obj_t* bean = lv_obj_create(body);
+    lv_obj_set_size(bean, 88, 100);
+    lv_obj_set_pos(bean, 16, 6);
+    lv_obj_set_style_radius(bean, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(bean, FUR, 0);
+    lv_obj_set_style_bg_opa(bean, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(bean, FUR_EDGE, 0);
+    lv_obj_set_style_border_width(bean, 3, 0);
+    lv_obj_set_style_pad_all(bean, 0, 0);
+    lv_obj_clear_flag(bean, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(bean, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Eyes (white + pupil). Pupils are children so blinking squashes both.
-    eye_l = circle(body, 32, 38, 24, lv_color_hex(0xFFFFFF));
-    eye_r = circle(body, 64, 38, 24, lv_color_hex(0xFFFFFF));
-    pupil_l = circle(eye_l, 0, 0, 11, INK);
+    // Gloss highlight
+    circle(body, 34, 24, 18, lv_color_hex(0xFFFFFF), LV_OPA_40);
+
+    // Big eyes. Pupils are children so blinking squashes both.
+    eye_l = circle(body, 30, 42, 28, lv_color_hex(0xFFFFFF));
+    eye_r = circle(body, 62, 42, 28, lv_color_hex(0xFFFFFF));
+    pupil_l = circle(eye_l, 0, 0, 14, INK);
     lv_obj_center(pupil_l);
-    pupil_r = circle(eye_r, 0, 0, 11, INK);
+    pupil_r = circle(eye_r, 0, 0, 14, INK);
     lv_obj_center(pupil_r);
 
     // Squeezed-shut eyes for straining: "><"
@@ -77,20 +90,20 @@ void MuseMascot::create(lv_obj_t* parent) {
     lv_label_set_text(squint_l, ">");
     lv_obj_set_style_text_font(squint_l, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(squint_l, INK, 0);
-    lv_obj_set_pos(squint_l, 36, 40);
+    lv_obj_set_pos(squint_l, 34, 42);
     lv_obj_add_flag(squint_l, LV_OBJ_FLAG_HIDDEN);
 
     squint_r = lv_label_create(body);
     lv_label_set_text(squint_r, "<");
     lv_obj_set_style_text_font(squint_r, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(squint_r, INK, 0);
-    lv_obj_set_pos(squint_r, 68, 40);
+    lv_obj_set_pos(squint_r, 66, 42);
     lv_obj_add_flag(squint_r, LV_OBJ_FLAG_HIDDEN);
 
     // Smile (idle)
     smile = lv_arc_create(body);
     lv_obj_set_size(smile, 44, 44);
-    lv_obj_set_pos(smile, 38, 44);
+    lv_obj_set_pos(smile, 38, 48);
     lv_arc_set_bg_angles(smile, 30, 150);
     lv_obj_set_style_arc_color(smile, INK, LV_PART_MAIN);
     lv_obj_set_style_arc_width(smile, 4, LV_PART_MAIN);
@@ -103,17 +116,17 @@ void MuseMascot::create(lv_obj_t* parent) {
     lv_label_set_text(o_mouth, "o");
     lv_obj_set_style_text_font(o_mouth, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(o_mouth, INK, 0);
-    lv_obj_set_pos(o_mouth, 53, 58);
+    lv_obj_set_pos(o_mouth, 53, 62);
     lv_obj_add_flag(o_mouth, LV_OBJ_FLAG_HIDDEN);
 
-    // Effort blush
-    cheek_l = circle(body, 22, 60, 16, BLUSH);
+    // Rosy cheeks — Jolly's signature, brighter when straining
+    cheek_l = circle(body, 20, 64, 18, BLUSH);
     lv_obj_add_flag(cheek_l, LV_OBJ_FLAG_HIDDEN);
-    cheek_r = circle(body, 82, 60, 16, BLUSH);
+    cheek_r = circle(body, 82, 64, 18, BLUSH);
     lv_obj_add_flag(cheek_r, LV_OBJ_FLAG_HIDDEN);
 
     // Motion lines
-    const int ys[3] = {34, 52, 70};
+    const int ys[3] = {36, 54, 72};
     for (int i = 0; i < 3; i++) {
         lines[i] = hbar(body, 2, ys[i], 12, SPEED);
         lv_obj_add_flag(lines[i], LV_OBJ_FLAG_HIDDEN);
@@ -144,8 +157,8 @@ void MuseMascot::applyState() {
     if (!straining && body) {
         lv_obj_set_x(body, 0);
         lv_obj_set_y(body, 0);
-        lv_obj_set_height(eye_l, 24);
-        lv_obj_set_height(eye_r, 24);
+        lv_obj_set_height(eye_l, 28);
+        lv_obj_set_height(eye_r, 28);
     }
 }
 
@@ -169,7 +182,7 @@ void MuseMascot::tick() {
         lv_obj_set_x(body, 0);
         lv_obj_set_y(body, (((frame >> 3) & 1) ? 3 : -3));
         bool blink = (frame % 32) < 2;
-        lv_obj_set_height(eye_l, blink ? 5 : 24);
-        lv_obj_set_height(eye_r, blink ? 5 : 24);
+        lv_obj_set_height(eye_l, blink ? 6 : 28);
+        lv_obj_set_height(eye_r, blink ? 6 : 28);
     }
 }
