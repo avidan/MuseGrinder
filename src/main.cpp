@@ -13,6 +13,7 @@
 #include "tasks/weight_sampling_task.h"
 #include "tasks/grind_control_task.h"
 #include "tasks/file_io_task.h"
+#include "muse/muse_wifi.h"
 
 HardwareManager hardware_manager;
 StateMachine state_machine;
@@ -138,11 +139,15 @@ void setup() {
     
     // Initialize remaining task modules that depend on TaskManager queues
     file_io_task.init(task_manager.get_file_io_queue());
+
+    // Muse gadget: WiFi + HTTP API for Muse (Home Link)
+    museWifiSetup(&grind_controller, hardware_manager.get_load_cell());
     
     LOG_BLE("✅ All task modules initialized\n");
 }
 
 void loop() {
+    museWifiLoop(); // Muse gadget HTTP API
 
 
 #if SYS_ENABLE_REALTIME_HEARTBEAT
