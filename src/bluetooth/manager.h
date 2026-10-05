@@ -84,8 +84,8 @@ private:
     BLECharacteristic* sysinfo_diagnostics_characteristic;
     
     // Connection state
-    bool device_connected;
-    bool ble_enabled;
+    volatile bool device_connected;
+    volatile bool ble_enabled;
     bool debug_stream_active;
     unsigned long enable_time;
     unsigned long timeout_ms;
@@ -113,7 +113,7 @@ private:
 
     // Diagnostics report control flags
     bool diagnostic_report_pending;
-    bool diagnostic_report_in_progress;
+    volatile bool diagnostic_report_in_progress;
 
     // Private methods
     void update_ui_status(const char* status);

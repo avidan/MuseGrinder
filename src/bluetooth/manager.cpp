@@ -306,8 +306,17 @@ void BluetoothManager::disable() {
     ble_enabled = false;
     device_connected = false;
 
-    stop_advertising();
+    // stop_advertising() is a no-op once ble_enabled is cleared.
+    BLEDevice::stopAdvertising();
     delay(BLE_SHUTDOWN_ADVERTISING_DELAY_MS);
+
+    // disable() runs on the UI task; a diagnostic report may be mid-notify on
+    // the BLE task. It bails out on !device_connected, so wait for it to finish
+    // before deinit frees the characteristic underneath it.
+    const unsigned long report_wait_start = millis();
+    while (diagnostic_report_in_progress && millis() - report_wait_start < 2000) {
+        delay(10);
+    }
 
     log("Bluetooth: Deinitializing BLE stack...\n");
     BLEDevice::deinit(false);
@@ -1579,6 +1588,7 @@ void BluetoothManager::generate_diagnostic_report() {
                 // Read and output last 5 sessions
                 int sessions_to_show = (count < 5) ? count : 5;
                 for (int i = 0; i < sessions_to_show; i++) {
+                    if (!device_connected) break;
                     char filename[64];
                     snprintf(filename, sizeof(filename), SESSION_FILE_FORMAT, session_ids[i]);
 
@@ -1622,6 +1632,7 @@ void BluetoothManager::generate_diagnostic_report() {
                                 const size_t phase_name_count = sizeof(phase_names) / sizeof(phase_names[0]);
 
                                 for (uint16_t e = 0; e < header.event_count; e++) {
+                                    if (!device_connected) break;
                                     GrindEvent event;
                                     if (sessionFile.read((uint8_t*)&event, sizeof(event)) == sizeof(event)) {
                                         const char* phase_name = (event.phase_id < phase_name_count) ? phase_names[event.phase_id] : "UNKNOWN";
@@ -1751,6 +1762,7 @@ void BluetoothManager::generate_diagnostic_report() {
         if (autotuneFile) {
             // Stream file contents in chunks
             while (autotuneFile.available()) {
+                if (!device_connected) break; // client gone - stop walking flash
                 size_t bytesToRead = autotuneFile.available();
                 if (bytesToRead > sizeof(buf) - 1) {
                     bytesToRead = sizeof(buf) - 1;
