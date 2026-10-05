@@ -444,7 +444,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
                              millis(), event_data.phase_display_text);
                 WeightSensor* weight_sensor = ui_manager_->hardware_manager->get_weight_sensor();
                 ui_manager_->grinding_screen.update_profile_name(ui_manager_->profile_controller->get_current_name());
-                ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+                ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
                 chart_updates_enabled_ = true;
                 update_grinding_targets();
                 if (weight_sensor) {
@@ -493,7 +493,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
                 ui_manager_->grinding_screen.update_tare_display();
             } else {
                 ui_manager_->current_mode = event_data.mode;
-                ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+                ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
                 ui_manager_->grinding_screen.update_current_weight(event_data.current_weight);
                 ui_manager_->grinding_screen.update_progress(event_data.progress_percent);
 
@@ -510,7 +510,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
         }
         case UIGrindEvent::COMPLETED: {
             ui_manager_->current_mode = event_data.mode;
-            ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+            ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
             final_grind_weight_ = event_data.final_weight;
             final_grind_progress_ = event_data.progress_percent;
             LOG_BLE("GRIND COMPLETE - Final settled weight captured: %.2fg (Progress: %d%%)\n",
@@ -522,7 +522,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
         }
         case UIGrindEvent::TIMEOUT: {
             ui_manager_->current_mode = event_data.mode;
-            ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+            ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
             error_grind_weight_ = event_data.error_weight;
             error_grind_progress_ = event_data.error_progress;
             const char* message = event_data.error_message ? event_data.error_message : "Error";
@@ -626,7 +626,7 @@ void GrindingUIController::enter_grinding_state() {
     WeightSensor* weight_sensor = ui_manager_->hardware_manager->get_weight_sensor();
     ui_manager_->grinding_screen.reset_chart_data();
     ui_manager_->grinding_screen.update_profile_name(ui_manager_->profile_controller->get_current_name());
-    ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+    ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
     chart_updates_enabled_ = true;
     update_grinding_targets();
     if (weight_sensor) {
@@ -643,7 +643,7 @@ void GrindingUIController::enter_grind_complete_state() {
         lv_obj_clear_flag(grind_button_, LV_OBJ_FLAG_HIDDEN);
     }
     ui_manager_->grinding_screen.update_profile_name(ui_manager_->profile_controller->get_current_name());
-    ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+    ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
     ui_manager_->grinding_screen.update_current_weight(final_grind_weight_);
     ui_manager_->grinding_screen.update_progress(final_grind_progress_);
 }
@@ -652,7 +652,7 @@ void GrindingUIController::enter_grind_timeout_state() {
     if (grind_button_) {
         lv_obj_clear_flag(grind_button_, LV_OBJ_FLAG_HIDDEN);
     }
-    ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+    ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
     ui_manager_->grinding_screen.update_profile_name("ERROR");
     char error_display[64];
     const char* message = error_message_[0] ? error_message_ : "Error";

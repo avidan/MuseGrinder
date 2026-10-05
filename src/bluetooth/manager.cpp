@@ -19,6 +19,14 @@
 #include "../hardware/WeightSensor.h"
 #include "../controllers/grind_controller.h"
 
+extern GrindController grind_controller;
+
+// Flash writes stall the cache on both cores; keep them out of active grinds
+// so weight sampling and motor-stop timing are not disturbed.
+static bool grind_in_progress() {
+    return grind_controller.is_active() && !grind_controller.is_finished();
+}
+
 BluetoothManager::BluetoothManager()
     : ble_server(nullptr)
     , ota_service(nullptr)
@@ -925,7 +933,11 @@ void BluetoothManager::onWrite(BLECharacteristic* characteristic) {
         // Image data chunks arrive here (writes to data transfer characteristic)
         if (image_handler.is_upload_active()) {
             String value = characteristic->getValue();
-            if (value.length() > 0 && !image_handler.process_chunk((const uint8_t*)value.c_str(), value.length())) {
+            if (grind_in_progress() && image_handler.is_upload_active()) {
+                LOG_BLE("Image: grind started - aborting upload\n");
+                image_handler.abort_upload();
+                set_image_status(BLE_IMG_STATUS_ERROR);
+            } else if (value.length() > 0 && !image_handler.process_chunk((const uint8_t*)value.c_str(), value.length())) {
                 set_image_status(BLE_IMG_STATUS_ERROR);
             }
         }
@@ -944,6 +956,11 @@ void BluetoothManager::onRead(BLECharacteristic* characteristic) {
 void BluetoothManager::handle_image_control_command(uint8_t command, const String& value) {
     switch (command) {
         case BLE_IMG_CMD_START: {
+            if (grind_in_progress()) {
+                LOG_BLE("Image: upload refused - grind in progress\n");
+                set_image_status(BLE_IMG_STATUS_ERROR);
+                return;
+            }
             if (value.length() < 5) {
                 LOG_BLE("Image: START command too short\n");
                 set_image_status(BLE_IMG_STATUS_ERROR);

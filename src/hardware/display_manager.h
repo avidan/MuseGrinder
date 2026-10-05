@@ -16,6 +16,7 @@ private:
     esp_lcd_panel_io_handle_t panel_io;
     esp_lcd_panel_handle_t panel_handle;
     lv_display_t* pending_flush_display;
+    volatile bool raw_transfer_done;  // completion flag for non-LVGL draws (splash)
 #else
     Arduino_DataBus* bus;
     Arduino_GFX* gfx_device;

@@ -69,9 +69,11 @@ void ScreensaverController::show() {
     }
 
     // Set up image descriptor for raw RGB565 data
+    image_dsc_.header.magic = LV_IMAGE_HEADER_MAGIC;
     image_dsc_.header.cf = LV_COLOR_FORMAT_RGB565;
     image_dsc_.header.w = HW_DISPLAY_WIDTH_PX;
     image_dsc_.header.h = HW_DISPLAY_HEIGHT_PX;
+    image_dsc_.header.stride = HW_DISPLAY_WIDTH_PX * sizeof(uint16_t);
     image_dsc_.data_size = BLE_IMAGE_EXPECTED_SIZE;
     image_dsc_.data = image_buffer_;
 

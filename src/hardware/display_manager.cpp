@@ -188,7 +188,11 @@ void DisplayManager::update() {
 }
 
 bool DisplayManager::draw_rgb565_file(const char* path, uint16_t width, uint16_t height) {
+#if HW_DISPLAY_VARIANT_V2
+    if (!initialized || !panel_handle || !path || width == 0 || height == 0) {
+#else
     if (!initialized || !gfx_device || !path || width == 0 || height == 0) {
+#endif
         return false;
     }
 
@@ -240,9 +244,30 @@ bool DisplayManager::draw_rgb565_file(const char* path, uint16_t width, uint16_t
             break;
         }
 
-        // Screensaver uploads are stored as native little-endian RGB565.
-        // Arduino_GFX converts native pixels to the panel byte order here.
-        gfx_device->draw16bitRGBBitmap(x, y + current_y, row_buffer, width, rows);
+        // Uploads are native little-endian RGB565, the same format LVGL
+        // renders. Send them exactly as display_flush_cb sends LVGL pixels so
+        // the splash matches the LVGL-drawn screensaver and UI.
+#if HW_DISPLAY_VARIANT_V2
+        raw_transfer_done = false;
+        if (esp_lcd_panel_draw_bitmap(panel_handle,
+                                      x + HW_DISPLAY_OFFSET_X_PX, y + current_y,
+                                      x + HW_DISPLAY_OFFSET_X_PX + width, y + current_y + rows,
+                                      row_buffer) != ESP_OK) {
+            success = false;
+            break;
+        }
+        // DMA reads row_buffer asynchronously; wait before reusing it.
+        const uint32_t wait_start = millis();
+        while (!raw_transfer_done && millis() - wait_start < 100) {
+            delay(1);
+        }
+#else
+        if (LV_COLOR_16_SWAP) {
+            gfx_device->draw16bitBeRGBBitmap(x, y + current_y, row_buffer, width, rows);
+        } else {
+            gfx_device->draw16bitRGBBitmap(x, y + current_y, row_buffer, width, rows);
+        }
+#endif
     }
 
     heap_caps_free(row_buffer);
@@ -333,6 +358,8 @@ bool DisplayManager::color_transfer_done_cb(esp_lcd_panel_io_handle_t,
         lv_display_t* display = manager->pending_flush_display;
         manager->pending_flush_display = nullptr;
         lv_display_flush_ready(display);
+    } else if (manager) {
+        manager->raw_transfer_done = true;
     }
     return false;
 }
