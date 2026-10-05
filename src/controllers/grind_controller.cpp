@@ -178,6 +178,7 @@ void GrindController::start_grind(float target, uint32_t time_ms, GrindMode grin
     session_descriptor.target_time_ms = target_time_ms;
     session_descriptor.tolerance = tolerance;
     session_descriptor.profile_id = current_profile_id;
+    session_descriptor.latency_to_coast_ratio = coast_ratio_;
 
     // Initialize pulse tracking
     additional_pulse_count = 0;

@@ -1267,7 +1267,7 @@ void BluetoothManager::generate_diagnostic_report() {
         "  GRIND_MAX_PULSE_ATTEMPTS: %d\n"
         "  GRIND_FLOW_DETECTION_THRESHOLD_GPS: %.1f\n"
         "  GRIND_UNDERSHOOT_TARGET_G: %.1f\n"
-        "  GRIND_LATENCY_TO_COAST_RATIO: %.1f\n"
+        "  Coast ratio (user setting): %.2f\n"
         "  GRIND_SCALE_SETTLING_TOLERANCE_G: %.3f\n"
         "  GRIND_TIME_PULSE_DURATION_MS: %d\n"
         "\n",
@@ -1276,7 +1276,7 @@ void BluetoothManager::generate_diagnostic_report() {
         GRIND_MAX_PULSE_ATTEMPTS,
         GRIND_FLOW_DETECTION_THRESHOLD_GPS,
         GRIND_UNDERSHOOT_TARGET_G,
-        GRIND_LATENCY_TO_COAST_RATIO,
+        grind_controller.get_coast_ratio(),
         GRIND_SCALE_SETTLING_TOLERANCE_G,
         GRIND_TIME_PULSE_DURATION_MS
     );
