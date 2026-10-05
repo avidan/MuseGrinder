@@ -193,6 +193,11 @@ void DisplayManager::display_rounder_cb(lv_event_t* e) {
     
     area->x1 = 0;
     area->x2 = g_display_manager->screen_width - 1;
+#if HW_DISPLAY_VARIANT_V2
+    // SH8601 column/row windows must start on an even and end on an odd line.
+    area->y1 &= ~1;
+    area->y2 |= 1;
+#endif
 }
 
 void DisplayManager::display_flush_cb(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map) {
