@@ -238,7 +238,7 @@ void GrindingScreenChart::update_tare_display() {
 }
 
 void GrindingScreenChart::update_progress(int percent) {
-    if (time_mode && target_time_seconds > 0.0f) {
+    if (time_mode && target_time_seconds > 0.0f && percent < 100) { // leave final weight visible when done
         // Show elapsed time in current value display instead of sensor weight
         lv_span_t* current_span = lv_spangroup_get_child(weight_spangroup, 0);
         if (current_span) {

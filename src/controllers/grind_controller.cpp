@@ -26,6 +26,7 @@ void GrindController::init(WeightSensor* lc, Grinder* gr, Preferences* prefs) {
     weight_sensor = lc;
     grinder = gr;
     preferences = prefs;
+    if (!control_mutex_) control_mutex_ = xSemaphoreCreateRecursiveMutex();
     phase = GrindPhase::IDLE;
     tolerance = GRIND_ACCURACY_TOLERANCE_G;
     current_profile_id = 0;
@@ -112,6 +113,7 @@ void GrindController::init(WeightSensor* lc, Grinder* gr, Preferences* prefs) {
 }
 
 void GrindController::start_grind(float target, uint32_t time_ms, GrindMode grind_mode) {
+    ControlLock lock(control_mutex_);
     target_weight = target;
     target_time_ms = time_ms;
     mode = grind_mode;
@@ -120,6 +122,12 @@ void GrindController::start_grind(float target, uint32_t time_ms, GrindMode grin
     if (!grinder) return;
     if (mode == GrindMode::WEIGHT) {
         if (!weight_sensor) return;
+        // Uncalibrated devices may boot to READY in TIME mode; never run a
+        // weight grind against a bogus calibration factor.
+        if (!weight_sensor->is_calibrated()) {
+            LOG_BLE("ERROR: Cannot start weight grind - load cell not calibrated\n");
+            return;
+        }
         if (weight_sensor->has_hardware_fault()) {
             LOG_BLE("ERROR: Cannot start grind - load cell hardware fault detected (%d)\n",
                     static_cast<int>(weight_sensor->get_hardware_fault()));
@@ -223,6 +231,7 @@ void GrindController::user_tare_request() {
 }
 
 void GrindController::return_to_idle() {
+    ControlLock lock(control_mutex_);
     // This is called by the UI to acknowledge a completed or timed-out grind
     // and return the controller to the IDLE state.
     if (phase == GrindPhase::COMPLETED || phase == GrindPhase::TIMEOUT) {
@@ -242,6 +251,7 @@ void GrindController::return_to_idle() {
 }
 
 void GrindController::stop_grind() {
+    ControlLock lock(control_mutex_);
     if (!grinder) return;
     
     grinder->stop();
@@ -264,6 +274,7 @@ void GrindController::stop_grind() {
 }
 
 void GrindController::continue_from_purge() {
+    ControlLock lock(control_mutex_);
     // Called by UI when user confirms purge completion
     if (phase != GrindPhase::PURGE_CONFIRM) {
         LOG_BLE("[%lums CONTROLLER] Warning: continue_from_purge() called in wrong phase: %s\n",
@@ -291,6 +302,7 @@ void GrindController::continue_from_purge() {
 }
 
 void GrindController::pause_grind() {
+    ControlLock lock(control_mutex_);
     if (phase != GrindPhase::TIME_GRINDING || grind_paused_) return;
 
     grind_paused_ = true;
@@ -303,6 +315,7 @@ void GrindController::pause_grind() {
 }
 
 void GrindController::resume_grind() {
+    ControlLock lock(control_mutex_);
     if (phase != GrindPhase::TIME_GRINDING || !grind_paused_) return;
 
     uint32_t pause_duration = millis() - pause_start_ms_;
@@ -318,9 +331,18 @@ void GrindController::resume_grind() {
 }
 
 void GrindController::update() {
+    ControlLock lock(control_mutex_);
     if (!is_active()) return;
     
     unsigned long now = millis();
+
+    // A paused time grind must not stay resumable indefinitely.
+    if (grind_paused_ && now - pause_start_ms_ > GRIND_TIME_PAUSE_MAX_MS) {
+        LOG_BLE("[%lums CONTROLLER] Pause exceeded %lus - cancelling grind\n",
+                now, (unsigned long)(GRIND_TIME_PAUSE_MAX_MS / 1000));
+        stop_grind();
+        return;
+    }
     
     // Calculate all measurement values once at the start - pass to methods to avoid redundant calculations
     GrindLoopData loop_data = {};
@@ -359,7 +381,10 @@ void GrindController::update() {
         case GrindPhase::SETUP: {
             float pre_tare_weight = weight_sensor ? weight_sensor->get_weight_low_latency() : 0.0f;
             grind_logger.start_grind_session(session_descriptor, pre_tare_weight);
-            if (mode == GrindMode::TIME) {
+            // Time mode tares as before when a working load cell is present;
+            // it only skips tare when there is no usable sensor.
+            const bool sensor_usable = weight_sensor && !weight_sensor->has_hardware_fault();
+            if (mode == GrindMode::TIME && !sensor_usable) {
                 if (!grinder->is_grinding()) grinder->start();
                 time_grind_start_ms = loop_data.now;
                 switch_phase(GrindPhase::TIME_GRINDING, loop_data);

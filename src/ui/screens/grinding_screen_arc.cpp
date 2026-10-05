@@ -108,7 +108,7 @@ void GrindingScreenArc::update_tare_display() {
 
 void GrindingScreenArc::update_progress(int percent) {
     lv_arc_set_value(progress_arc, percent);
-    if (time_mode && target_time_seconds_ > 0.0f) {
+    if (time_mode && target_time_seconds_ > 0.0f && percent < 100) { // leave final weight visible when done
         // Show elapsed time in center instead of sensor weight
         float elapsed_s = (percent / 100.0f) * target_time_seconds_;
         char elapsed_text[16];

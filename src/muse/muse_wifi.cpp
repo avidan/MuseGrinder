@@ -13,8 +13,9 @@
  *
  * WiFi never blocks boot — the grinder works normally while offline.
  *
- * Calls GrindController from the Core 1 loop task — the same context the
- * touch UI uses, so no new threading concerns.
+ * Runs in the Arduino loop() task. GrindController serializes its entry
+ * points with an internal mutex, so calls from here are safe alongside the
+ * UI task and the grind control task.
  */
 
 #include "muse_wifi.h"
@@ -110,6 +111,12 @@ static void museHandleTarget() {
         s_gc->return_to_idle();
     }
     s_gc->start_grind(g, 0, GrindMode::WEIGHT);
+    if (!s_gc->is_active()) {
+        // start_grind refuses on a load cell fault or uncalibrated scale.
+        museServer.send(503, "application/json",
+            "{\"error\":\"grinder refused to start (load cell fault or not calibrated)\"}");
+        return;
+    }
 
     char buf[64];
     snprintf(buf, sizeof(buf), "{\"target_g\":%.1f,\"started\":true}", g);

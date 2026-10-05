@@ -12,6 +12,7 @@
 #include <LittleFS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/semphr.h>
 
 class DiagnosticsController;
 
@@ -142,9 +143,19 @@ private:
     bool control_loop_paused_;      // Indicates control loop is suspended (e.g., purge confirmation)
 
     // Time mode pause state
-    bool grind_paused_;
-    uint32_t pause_start_ms_;
-    uint32_t total_pause_ms_;
+    volatile bool grind_paused_;
+    volatile uint32_t pause_start_ms_;
+    volatile uint32_t total_pause_ms_;
+
+    // Serializes state changes: update() runs on the grind control task while
+    // start/stop/pause/resume arrive from the UI task and the Muse HTTP loop.
+    // Recursive because entry points call each other (e.g. update -> stop).
+    SemaphoreHandle_t control_mutex_ = nullptr;
+    struct ControlLock {
+        SemaphoreHandle_t m;
+        explicit ControlLock(SemaphoreHandle_t mutex) : m(mutex) { if (m) xSemaphoreTakeRecursive(m, portMAX_DELAY); }
+        ~ControlLock() { if (m) xSemaphoreGiveRecursive(m); }
+    };
     
     // Flash operation queue - thread-safe Core 0 → Core 1 communication
     QueueHandle_t flash_op_queue;

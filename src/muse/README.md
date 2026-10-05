@@ -45,7 +45,9 @@ closes once the grinder joins. Thereafter: `http://musegrinder.local`.
   the cup still on the scale. Stopped (cancelled) grinds don't update `/last`.
 - `/target` doesn't check which UI screen is showing (e.g. menu or
   calibration) — Muse should only dose when the grinder is idle.
-- `start_grind()` is called from the Core 1 loop task, the same context the
-  touch UI already uses.
+- Runs in the Arduino `loop()` task, separate from the UI and grind control
+  tasks. GrindController serializes start/stop/update with a mutex.
+- `/target` returns 503 if the grinder refuses to start (load cell fault or
+  scale not calibrated).
 - Next: the Muse gadget skill (markdown) teaching Muse to drive this API
   alongside the GS3's shotStopper board.
