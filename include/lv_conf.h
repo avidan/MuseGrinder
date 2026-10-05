@@ -40,7 +40,7 @@
  * - LV_STDLIB_RTTHREAD:    RT-Thread implementation
  * - LV_STDLIB_CUSTOM:      Implement the functions externally
  */
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CUSTOM  /* PSRAM-backed, see src/ui/lv_mem_psram.cpp */
 
 /** Possible values
  * - LV_STDLIB_BUILTIN:     LVGL's built in implementation

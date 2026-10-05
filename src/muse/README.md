@@ -18,30 +18,33 @@ museWifiSetup(&grind_controller, hardware_manager.get_load_cell());
 museWifiLoop();
 ```
 
-Plus one line in `platformio.ini` `lib_deps`:
-
-```
-tzapu/WiFiManager@^2.0.17
-```
+No extra libraries — WiFi setup uses a small built-in portal (WiFiManager
+was dropped: it needs Arduino's global `Update`, which `NO_GLOBAL_UPDATE`
+removes for esp32-flashz, and it exposes an unauthenticated OTA page).
 
 ## First boot
 
-Join the `MuseGrinder-Setup` AP, pick your WiFi network. Thereafter:
-`http://musegrinder.local`.
+WiFi never blocks boot; the grinder works normally offline. If no saved
+network connects within 20s of boot, join the open `MuseGrinder-Setup` AP
+(captive portal, or browse to `192.168.4.1`) and enter your network. The AP
+closes once the grinder joins. Thereafter: `http://musegrinder.local`.
 
 ## API
 
 | Method | Path | Effect |
 |---|---|---|
 | GET | `/status` | `{grinding, weight_g, target_g, mode, last_result, firmware}` |
-| POST | `/target` | Body `{"g": 18.5}` — starts a weight-based grind (1–100g); 409 if a grind is already active |
+| POST | `/target` | Body `{"g": 18.5}` — starts a weight-based grind (1–100g); 409 if a grind is already active. A finished grind still on screen is dismissed first |
 | POST | `/stop` | Stops the active grind |
 | GET | `/last` | `{valid, final_weight_g, target_g, result}` for the last completed grind |
 
 ## Notes
 
-- Uncompiled here (no ESP32 toolchain on this machine) — verify the
-  PlatformIO build before flashing.
+- `grinding` is false once a grind reaches COMPLETED/TIMEOUT, even before
+  the result screen is dismissed. `/last` is captured at that moment, with
+  the cup still on the scale. Stopped (cancelled) grinds don't update `/last`.
+- `/target` doesn't check which UI screen is showing (e.g. menu or
+  calibration) — Muse should only dose when the grinder is idle.
 - `start_grind()` is called from the Core 1 loop task, the same context the
   touch UI already uses.
 - Next: the Muse gadget skill (markdown) teaching Muse to drive this API
