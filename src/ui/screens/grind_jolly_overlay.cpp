@@ -2,8 +2,9 @@
 #include "../../config/constants.h"
 
 namespace {
-// 112px frames at 2.5x = 280px: the full screen width.
-constexpr uint16_t kJollyScale = 640;
+// 3x: 336x372px. Wider than the 280px screen, so the edges of the shake
+// clip slightly, but Jolly and the toilet fill most of the display.
+constexpr uint16_t kJollyScale = 768;
 }
 
 void GrindJollyOverlay::create(TapHandler handler, void* ctx) {
@@ -24,7 +25,8 @@ void GrindJollyOverlay::create(TapHandler handler, void* ctx) {
 
     mascot.create(overlay, kJollyScale);
     mascot.setStraining(true);
-    lv_obj_center(mascot.get_root());
+    // Toilet on the bottom edge of the screen.
+    lv_obj_align(mascot.get_root(), LV_ALIGN_BOTTOM_MID, 0, 0);
 
     hide();
 }

@@ -21,6 +21,11 @@ import sys
 
 FRAME_W = 112
 FRAME_H = 112
+# Straining frames get their own tight crop around Jolly + toilet (source px),
+# so they fill more of the screen. Bottom edge sits just under the pedestal.
+STRAIN_CROP = (28, 16, 292, 310)
+STRAIN_W = 112
+STRAIN_H = 124
 FRAME_STEP = 4          # every 4th GIF frame (40ms -> 160ms per frame)
 BLACK_THRESHOLD = 16    # pixels darker than this count as background
 STRAIN_FRAME_MS = 110   # straining loop speed
@@ -109,11 +114,11 @@ def main():
 
     gif.seek(STRAIN_BASE_FRAME)
     base = gif.convert("RGB")
-    strain = [to_rgb565(f, crop_box) for f in make_strain_frames(base)]
+    strain = [to_rgb565(f, STRAIN_CROP, STRAIN_W, STRAIN_H) for f in make_strain_frames(base)]
 
-    total = len(idle) + len(strain)
-    print(f"gen_jolly: {len(idle)} idle + {len(strain)} straining frames, "
-          f"{FRAME_W}x{FRAME_H} RGB565 ({len(idle[0]) * total // 1024} KiB flash)")
+    kib = (sum(map(len, idle)) + sum(map(len, strain))) // 1024
+    print(f"gen_jolly: {len(idle)} idle frames {FRAME_W}x{FRAME_H} + {len(strain)} straining "
+          f"frames {STRAIN_W}x{STRAIN_H}, RGB565 ({kib} KiB flash)")
 
     write_sources(out_dir, idle, strain)
     print(f"gen_jolly: wrote {out_dir / 'jolly_anim.c'} and jolly_anim.h")
@@ -122,29 +127,29 @@ def main():
         write_previews(pathlib.Path(args.preview), idle, strain)
 
 
-def to_rgb565(frame, crop_box):
+def to_rgb565(frame, crop_box, w=FRAME_W, h=FRAME_H):
     from PIL import Image
 
-    small = frame.crop(crop_box).resize((FRAME_W, FRAME_H), Image.LANCZOS)
+    small = frame.crop(crop_box).resize((w, h), Image.LANCZOS)
     px = small.load()
     buf = bytearray()
-    for y in range(FRAME_H):
-        for x in range(FRAME_W):
+    for y in range(h):
+        for x in range(w):
             v = rgb565(*px[x, y])
             buf.append(v & 0xFF)
             buf.append(v >> 8)
     return bytes(buf)
 
 
-def from_rgb565(buf):
+def from_rgb565(buf, w=FRAME_W, h=FRAME_H):
     from PIL import Image
 
-    img = Image.new("RGB", (FRAME_W, FRAME_H))
+    img = Image.new("RGB", (w, h))
     px = img.load()
-    for i in range(FRAME_W * FRAME_H):
+    for i in range(w * h):
         v = buf[2 * i] | (buf[2 * i + 1] << 8)
         r, g, b = (v >> 11) & 0x1F, (v >> 5) & 0x3F, v & 0x1F
-        px[i % FRAME_W, i // FRAME_W] = (r << 3 | r >> 2, g << 2 | g >> 4, b << 3 | b >> 2)
+        px[i % w, i // w] = (r << 3 | r >> 2, g << 2 | g >> 4, b << 3 | b >> 2)
     return img
 
 
@@ -305,6 +310,8 @@ def write_sources(out_dir, idle, strain):
 #define JOLLY_FRAME_H {FRAME_H}
 #define JOLLY_FRAME_COUNT {len(idle)}
 #define JOLLY_FRAME_MS {40 * FRAME_STEP}
+#define JOLLY_STRAIN_W {STRAIN_W}
+#define JOLLY_STRAIN_H {STRAIN_H}
 #define JOLLY_STRAIN_COUNT {len(strain)}
 #define JOLLY_STRAIN_FRAME_MS {STRAIN_FRAME_MS}
 
@@ -327,8 +334,9 @@ const lv_image_dsc_t* jolly_get_strain_frame(int i);
         '#include "jolly_anim.h"',
         "",
     ]
-    for name, bufs, count_macro in (("jolly", idle, "JOLLY_FRAME_COUNT"),
-                                    ("jolly_strain", strain, "JOLLY_STRAIN_COUNT")):
+    for name, bufs, count_macro, wm, hm in (
+            ("jolly", idle, "JOLLY_FRAME_COUNT", "JOLLY_FRAME_W", "JOLLY_FRAME_H"),
+            ("jolly_strain", strain, "JOLLY_STRAIN_COUNT", "JOLLY_STRAIN_W", "JOLLY_STRAIN_H")):
         for i, buf in enumerate(bufs):
             hexbytes = ", ".join(f"0x{b:02x}" for b in buf)
             parts.append(f"static const uint8_t {name}_frame_{i}[{len(buf)}] = {{{hexbytes}}};")
@@ -337,7 +345,7 @@ const lv_image_dsc_t* jolly_get_strain_frame(int i);
         for i in range(len(bufs)):
             parts.append(
                 f"    {{ .header = {{ .magic = LV_IMAGE_HEADER_MAGIC, .cf = LV_COLOR_FORMAT_RGB565,"
-                f" .flags = 0, .w = JOLLY_FRAME_W, .h = JOLLY_FRAME_H, .stride = JOLLY_FRAME_W * 2 }},"
+                f" .flags = 0, .w = {wm}, .h = {hm}, .stride = {wm} * 2 }},"
                 f" .data_size = sizeof({name}_frame_{i}), .data = {name}_frame_{i} }},"
             )
         parts.append("};")
@@ -358,9 +366,9 @@ def write_previews(preview_dir, idle, strain):
     from PIL import Image
 
     preview_dir.mkdir(parents=True, exist_ok=True)
-    for name, bufs, ms in (("jolly_idle.gif", idle, 40 * FRAME_STEP),
-                           ("jolly_straining.gif", strain, STRAIN_FRAME_MS)):
-        imgs = [from_rgb565(b).resize((FRAME_W * 3, FRAME_H * 3), Image.NEAREST) for b in bufs]
+    for name, bufs, ms, w, h in (("jolly_idle.gif", idle, 40 * FRAME_STEP, FRAME_W, FRAME_H),
+                                 ("jolly_straining.gif", strain, STRAIN_FRAME_MS, STRAIN_W, STRAIN_H)):
+        imgs = [from_rgb565(b, w, h).resize((w * 3, h * 3), Image.NEAREST) for b in bufs]
         imgs[0].save(preview_dir / name, save_all=True, append_images=imgs[1:],
                      duration=ms, loop=0)
         print(f"gen_jolly: preview {preview_dir / name}")

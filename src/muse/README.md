@@ -96,5 +96,10 @@ sets it true on `GRINDING`, false on `GRIND_COMPLETE` / `GRIND_TIMEOUT`.
 Animation runs on an `lv_timer` (50ms) that picks the frame from the tick
 clock; `tick()` early-outs while hidden.
 
+While a grind runs, `GrindJollyOverlay` shows only the straining Jolly at
+3x (336x372, edges slightly clipped), toilet on the bottom edge of the
+screen; tap to stop. Straining frames use their own tighter crop
+(`STRAIN_CROP`, 112x124) so the scene fills more of the display.
+
 **Menu → Tools → Jolly** shows the animation at 2x. Tap Jolly or flip the
 Straining switch to swap between the idle and grinding animations.

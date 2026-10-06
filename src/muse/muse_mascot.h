@@ -27,8 +27,10 @@ public:
 private:
     static void timer_cb(lv_timer_t* t);
     void tick();
+    void apply_size();  // idle and straining frames differ in size
 
     lv_obj_t* root = nullptr;
     lv_obj_t* img = nullptr;
+    uint16_t scale = 256;
     bool straining = false;
 };
