@@ -17,7 +17,9 @@
 class MuseMascot {
 public:
     // Creates the player as a child of parent. scale is LVGL fixed point
-    // (256 = 1x, 512 = 2x); pixel art is drawn without smoothing.
+    // (256 = 1x, 512 = 2x). Scaled frames are pre-rendered (nearest
+    // neighbour) into a PSRAM buffer once per frame change, so LVGL only
+    // blits them — no per-refresh transform.
     void create(lv_obj_t* parent, uint16_t scale = 256);
     // true while the grinder motor is running.
     void setStraining(bool straining);
@@ -27,10 +29,13 @@ public:
 private:
     static void timer_cb(lv_timer_t* t);
     void tick();
-    void apply_size();  // idle and straining frames differ in size
+    void show_frame(const lv_image_dsc_t* frame);
 
     lv_obj_t* root = nullptr;
     lv_obj_t* img = nullptr;
     uint16_t scale = 256;
     bool straining = false;
+    const lv_image_dsc_t* shown_frame = nullptr;
+    uint16_t* scaled_pixels = nullptr;  // PSRAM, only when scale != 256
+    lv_image_dsc_t scaled_dsc = {};
 };

@@ -238,17 +238,16 @@ void UIManager::switch_to_state(UIState new_state) {
             edit_screen.update_target(edit_target);
             break;
 
+        // The full-screen Jolly replaces the grinding screen here. The screen
+        // stays hidden underneath so its live updates don't force redraws
+        // of the overlay (which starved core 1 and the Muse HTTP server).
         case UIState::GRINDING:
-            LOG_UI_DEBUG("[%lums UI_SCREEN_VISIBLE] GRINDING screen showing\n", millis());
-            grinding_screen.show();
-            grinding_screen.set_straining(true); // Muse strains while grinding
-            grind_jolly_overlay.show_straining(); // ...full screen, nothing else
+            LOG_UI_DEBUG("[%lums UI_SCREEN_VISIBLE] GRINDING overlay showing\n", millis());
+            grind_jolly_overlay.show_straining();
             break;
 
         case UIState::GRIND_COMPLETE:
-            grinding_screen.show();
-            grinding_screen.set_straining(false); // relieved
-            grind_jolly_overlay.show_dancing();   // full screen; tap to dismiss
+            grind_jolly_overlay.show_dancing();  // tap to dismiss
             break;
 
         case UIState::GRIND_TIMEOUT:

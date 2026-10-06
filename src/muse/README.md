@@ -95,7 +95,10 @@ pixel art stays crisp.
 `GrindingScreen::set_straining(bool)` fans out to both layouts; `UIManager`
 sets it true on `GRINDING`, false on `GRIND_COMPLETE` / `GRIND_TIMEOUT`.
 Animation runs on an `lv_timer` (50ms) that picks the frame from the tick
-clock; `tick()` early-outs while hidden.
+clock; `tick()` early-outs while hidden. Scaled players pre-render each new
+frame (nearest neighbour) into a PSRAM buffer, so LVGL only blits it.
+Letting LVGL scale a 3x image on every refresh pegged core 1 at ~180ms per
+UI cycle and starved `loop()` — and with it the Muse HTTP server.
 
 While a grind runs, `GrindJollyOverlay` shows only the straining Jolly at
 3x (336x372, edges slightly clipped), toilet on the bottom edge of the
