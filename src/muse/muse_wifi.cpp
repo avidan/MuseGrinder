@@ -4,6 +4,7 @@
  * Exposes the grinder to Muse over the LAN (Home Link):
  *   GET  /status  -> grinding state, live weight, target, last result
  *   POST /target  -> {"g": 18.5} starts a weight-based grind (1-100g)
+ *   POST /dose    -> {"g": 18.5} sets the next dose (selected profile), no grind
  *   POST /stop    -> stops an active grind
  *   GET  /last    -> summary of the last completed grind
  *
@@ -27,9 +28,12 @@
 
 #include "config/constants.h"
 #include "controllers/grind_controller.h"
+#include "controllers/profile_controller.h"
 #include "controllers/grind_mode.h"
 #include "hardware/WeightSensor.h"
 #include "system/simulation_mode.h"
+
+#include <atomic>
 
 static WebServer museServer(80);
 static DNSServer museDns;
@@ -42,6 +46,13 @@ static const char* MUSE_AP_SSID = "MuseGrinder-Setup";
 static const unsigned long MUSE_AP_FALLBACK_MS = 20000;
 static GrindController* s_gc = nullptr;
 static WeightSensor* s_ws = nullptr;
+static ProfileController* s_pc = nullptr;
+
+// Next dose queued by POST /dose, in tenths of a gram; -1 when none pending.
+static std::atomic<int> s_pendingDoseDg{-1};
+
+static const float MUSE_DOSE_MIN_G = 5.0f;    // profile minimum
+static const float MUSE_DOSE_MAX_G = 100.0f;  // same ceiling as /target
 
 struct MuseLastGrind {
     float finalWeightG = 0;
@@ -74,32 +85,78 @@ static const char* museResultName(GrindController::GrindSessionResult r) {
     }
 }
 
-static void museHandleStatus() {
-    char buf[256];
-    snprintf(buf, sizeof(buf),
-        "{\"grinding\":%s,\"weight_g\":%.2f,\"target_g\":%.1f,"
-        "\"mode\":\"weight\",\"last_result\":\"%s\","
-        "\"simulated\":%s,\"firmware\":\"musegrinder-muse/1.0\"}",
-        museIsGrinding() ? "true" : "false",
-        s_ws->get_display_weight(),
-        s_gc->get_target_weight(),
-        museResultName(s_gc->get_last_session_result()),
-        SimulationMode::enabled() ? "true" : "false");
-    museServer.send(200, "application/json", buf);
+// The dose the next button press will grind: a queued /dose if one hasn't
+// been applied yet, otherwise the selected profile's weight.
+static float museNextDose() {
+    int pending = s_pendingDoseDg.load();
+    return pending >= 0 ? pending / 10.0f : s_pc->get_current_weight();
 }
 
-static void museHandleTarget() {
+// Parse {"g": <grams>} from the request body. Sends 400 and returns false
+// if it's missing.
+static bool museParseGrams(float* grams) {
     if (!museServer.hasArg("plain")) {
         museServer.send(400, "application/json", "{\"error\":\"missing body\"}");
-        return;
+        return false;
     }
     String body = museServer.arg("plain");
     int gPos = body.indexOf("\"g\"");
     if (gPos < 0) {
         museServer.send(400, "application/json", "{\"error\":\"expected {\\\"g\\\": <grams>}\"}");
+        return false;
+    }
+    *grams = body.substring(body.indexOf(':', gPos) + 1).toFloat();
+    return true;
+}
+
+static void museHandleStatus() {
+    char buf[320];
+    snprintf(buf, sizeof(buf),
+        "{\"grinding\":%s,\"weight_g\":%.2f,\"target_g\":%.1f,"
+        "\"next_dose_g\":%.1f,\"profile\":\"%s\","
+        "\"mode\":\"weight\",\"last_result\":\"%s\","
+        "\"simulated\":%s,\"firmware\":\"musegrinder-muse/1.0\"}",
+        museIsGrinding() ? "true" : "false",
+        s_ws->get_display_weight(),
+        s_gc->get_target_weight(),
+        museNextDose(),
+        s_pc->get_current_name(),
+        museResultName(s_gc->get_last_session_result()),
+        SimulationMode::enabled() ? "true" : "false");
+    museServer.send(200, "application/json", buf);
+}
+
+// Set the dose for the next grind (the selected profile) without grinding.
+static void museHandleDose() {
+    float g;
+    if (!museParseGrams(&g)) return;
+    if (g < MUSE_DOSE_MIN_G || g > MUSE_DOSE_MAX_G) {
+        museServer.send(400, "application/json", "{\"error\":\"dose out of range (5-100g)\"}");
         return;
     }
-    float g = body.substring(body.indexOf(':', gPos) + 1).toFloat();
+    if (museIsGrinding()) {
+        museServer.send(409, "application/json", "{\"error\":\"grind active\"}");
+        return;
+    }
+    const int dg = static_cast<int>(g * 10.0f + 0.5f);
+    s_pendingDoseDg.store(dg);
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "{\"next_dose_g\":%.1f,\"profile\":\"%s\",\"started\":false}",
+             dg / 10.0f, s_pc->get_current_name());
+    museServer.send(200, "application/json", buf);
+}
+
+bool museTakePendingDose(float* grams) {
+    int dg = s_pendingDoseDg.exchange(-1);
+    if (dg < 0) return false;
+    *grams = dg / 10.0f;
+    return true;
+}
+
+static void museHandleTarget() {
+    float g;
+    if (!museParseGrams(&g)) return;
     if (g < 1 || g > 100) {
         museServer.send(400, "application/json", "{\"error\":\"target out of range (1-100g)\"}");
         return;
@@ -191,9 +248,10 @@ static void museStopSetupAp() {
     s_apActive = false;
 }
 
-void museWifiSetup(GrindController* gc, WeightSensor* ws) {
+void museWifiSetup(GrindController* gc, WeightSensor* ws, ProfileController* pc) {
     s_gc = gc;
     s_ws = ws;
+    s_pc = pc;
 
     WiFi.mode(WIFI_STA);
     WiFi.setHostname("musegrinder");
@@ -207,6 +265,7 @@ void museWifiSetup(GrindController* gc, WeightSensor* ws) {
     museServer.on("/target", HTTP_POST, museHandleTarget);
     museServer.on("/stop", HTTP_POST, museHandleStop);
     museServer.on("/last", HTTP_GET, museHandleLast);
+    museServer.on("/dose", HTTP_POST, museHandleDose);
     museServer.onNotFound([]() {
         if (s_apActive) { // captive portal: send every unknown URL to the form
             museServer.sendHeader("Location", "http://192.168.4.1/");

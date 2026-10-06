@@ -1,5 +1,6 @@
 #include "ui_manager.h"
 #include "../system/simulation_mode.h"
+#include "../muse/muse_wifi.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <cmath>
@@ -149,6 +150,16 @@ void UIManager::update() {
 
     if (screen_timeout_controller_) {
         screen_timeout_controller_->update();
+    }
+
+    // Next dose set remotely (Muse POST /dose): apply to the selected profile.
+    float next_dose_g;
+    if (profile_controller && museTakePendingDose(&next_dose_g)) {
+        profile_controller->set_profile_weight(profile_controller->get_current_profile(), next_dose_g);
+        if (ready_controller_) {
+            ready_controller_->refresh_profiles();
+        }
+        LOG_BLE("[MUSE] Next dose set to %.1fg (%s)\n", next_dose_g, profile_controller->get_current_name());
     }
 
     bool ota_cycle_consumed = false;

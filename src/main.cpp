@@ -188,7 +188,7 @@ void setup() {
     file_io_task.init(task_manager.get_file_io_queue());
 
     // Muse gadget: WiFi + HTTP API for Muse (Home Link)
-    museWifiSetup(&grind_controller, hardware_manager.get_load_cell());
+    museWifiSetup(&grind_controller, hardware_manager.get_load_cell(), &profile_controller);
     
     LOG_BLE("✅ All task modules initialized\n");
 }
