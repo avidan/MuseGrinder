@@ -100,7 +100,9 @@ clock; `tick()` early-outs while hidden.
 While a grind runs, `GrindJollyOverlay` shows only the straining Jolly at
 3x (336x372, edges slightly clipped), toilet on the bottom edge of the
 screen; tap to stop. When the grind completes it switches to the dancing
-Jolly, same toilet and size, alone on screen; tap to dismiss (the OK button).
+Jolly, same toilet and size, alone on screen, for 3s
+(`USER_GRIND_COMPLETE_DISPLAY_MS`) before returning to dose selection; tap
+to return sooner.
 Timeouts show the normal screen so the error is visible. Both loops use the
 same tight crop (`SCENE_CROP`, 112x124) so the scene fills more of the
 display and Jolly doesn't jump between them.

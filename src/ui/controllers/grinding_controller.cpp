@@ -672,7 +672,7 @@ void GrindingUIController::start_grind_complete_timer() {
     if (grind_complete_timer_) {
         lv_timer_del(grind_complete_timer_);
     }
-    grind_complete_timer_ = lv_timer_create(grind_complete_timer_cb, 60000, this);
+    grind_complete_timer_ = lv_timer_create(grind_complete_timer_cb, USER_GRIND_COMPLETE_DISPLAY_MS, this);
     lv_timer_set_repeat_count(grind_complete_timer_, 1);
 }
 

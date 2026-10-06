@@ -29,6 +29,8 @@
 #define USER_MIN_TARGET_TIME_S 0.5f                                            // Minimum allowed target time
 #define USER_MAX_TARGET_TIME_S 25.0f                                           // Maximum allowed target time
 
+#define USER_GRIND_COMPLETE_DISPLAY_MS 3000                                    // Dancing Jolly after a grind, then back to dose selection
+
 //------------------------------------------------------------------------------
 // WEIGHT/TIME ADJUSTMENTS
 //------------------------------------------------------------------------------
