@@ -26,3 +26,7 @@ failed_session_*.bin
 
 # Git worktrees
 .worktrees/
+
+# Generated Jolly frames (Meta-copyrighted art — personal use only, never commit)
+src/muse/jolly_anim.c
+src/muse/jolly_anim.h

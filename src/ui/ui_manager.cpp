@@ -231,14 +231,17 @@ void UIManager::switch_to_state(UIState new_state) {
         case UIState::GRINDING:
             LOG_UI_DEBUG("[%lums UI_SCREEN_VISIBLE] GRINDING screen showing\n", millis());
             grinding_screen.show();
+            grinding_screen.set_straining(true); // Muse strains while grinding
             break;
 
         case UIState::GRIND_COMPLETE:
             grinding_screen.show();
+            grinding_screen.set_straining(false); // relieved
             break;
 
         case UIState::GRIND_TIMEOUT:
             grinding_screen.show();
+            grinding_screen.set_straining(false);
             break;
 
         case UIState::MENU:

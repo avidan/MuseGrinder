@@ -1,6 +1,7 @@
 #pragma once
 #include <lvgl.h>
 #include "../../config/constants.h"
+#include "../../muse/muse_mascot.h"
 #include "grinding_screen_base.h"
 
 class GrindingScreenArc : public IGrindingScreen {
@@ -9,7 +10,8 @@ private:
     lv_obj_t* profile_label;
     lv_obj_t* target_label;
     lv_obj_t* weight_label;
-    lv_obj_t* progress_arc;
+    lv_obj_t* progress_bar;
+    MuseMascot mascot;
     bool visible;
     bool time_mode;
     float target_time_seconds_;
@@ -28,7 +30,8 @@ public:
     void update_tare_display() override;
     void update_progress(int percent) override;
     void set_time_mode(bool enabled);
-    
+    void setStraining(bool straining) { mascot.setStraining(straining); }
+
     bool is_visible() const override { return visible; }
     lv_obj_t* get_screen() const override { return screen; }
 };

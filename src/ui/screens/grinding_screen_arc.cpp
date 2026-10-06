@@ -9,14 +9,17 @@ void GrindingScreenArc::create() {
     lv_obj_align(screen, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_TRANSP, 0); // Keep transparent
     lv_obj_set_style_border_width(screen, 0, 0);
-    lv_obj_set_style_pad_all(screen, 20, 0);
+    lv_obj_set_style_pad_all(screen, 12, 0);
     lv_obj_add_flag(screen, LV_OBJ_FLAG_CLICKABLE); // Make the parent screen container clickable
 
     // Use flex layout for centering
     lv_obj_set_layout(screen, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(screen, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(screen, 30, 0);
+    lv_obj_set_style_pad_gap(screen, 10, 0);
+
+    // Muse mascot — the star of the show. Strains while grinding.
+    mascot.create(screen);
 
     // Profile name label
     profile_label = lv_label_create(screen);
@@ -33,26 +36,26 @@ void GrindingScreenArc::create() {
     lv_obj_set_width(target_label, 200);
     lv_obj_set_style_text_align(target_label, LV_TEXT_ALIGN_CENTER, 0);
 
-    // Progress arc
-    progress_arc = lv_arc_create(screen);
-    lv_obj_set_size(progress_arc, THEME_PROGRESS_ARC_DIAMETER_PX, THEME_PROGRESS_ARC_DIAMETER_PX);
-    lv_arc_set_range(progress_arc, 0, 100);
-    lv_arc_set_value(progress_arc, 0);
-    lv_obj_set_style_arc_color(progress_arc, lv_color_hex(THEME_COLOR_PRIMARY), LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(progress_arc, 12, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(progress_arc, lv_color_hex(0x333333), LV_PART_MAIN);
-    lv_obj_set_style_arc_width(progress_arc, 12, LV_PART_MAIN);
-    lv_obj_remove_style(progress_arc, nullptr, LV_PART_KNOB);
-
-    // Current weight label (inside arc)
-    weight_label = lv_label_create(progress_arc);
+    // Current weight label — big and standalone (the arc gave up its
+    // 200px so the mascot could headline).
+    weight_label = lv_label_create(screen);
     lv_label_set_text(weight_label, "0.0g");
-    lv_obj_set_style_text_font(weight_label, &lv_font_montserrat_56, 0);
+    lv_obj_set_style_text_font(weight_label, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(weight_label, lv_color_hex(THEME_COLOR_TEXT_PRIMARY), 0);
-    lv_obj_center(weight_label);
     std::snprintf(displayed_weight_text, sizeof(displayed_weight_text), "0.0g");
     displayed_progress = 0;
-    
+
+    // Slim progress bar (replaces the progress arc)
+    progress_bar = lv_bar_create(screen);
+    lv_obj_set_size(progress_bar, 200, 10);
+    lv_bar_set_range(progress_bar, 0, 100);
+    lv_bar_set_value(progress_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(progress_bar, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(progress_bar, lv_color_hex(THEME_COLOR_PRIMARY), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(progress_bar, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_radius(progress_bar, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+    lv_obj_clear_flag(progress_bar, LV_OBJ_FLAG_CLICKABLE);
+
     // MODIFIED: Ensure all child widgets pass click events to the parent screen
     for (uint32_t i = 0; i < lv_obj_get_child_cnt(screen); i++) {
         lv_obj_clear_flag(lv_obj_get_child(screen, i), LV_OBJ_FLAG_CLICKABLE);
@@ -112,7 +115,7 @@ void GrindingScreenArc::update_tare_display() {
     std::snprintf(displayed_weight_text, sizeof(displayed_weight_text), "TARE");
     lv_label_set_text(weight_label, "TARE");
     displayed_progress = 0;
-    lv_arc_set_value(progress_arc, 0);  // Reset arc to 0 during taring
+    lv_bar_set_value(progress_bar, 0, LV_ANIM_OFF);
 }
 
 void GrindingScreenArc::update_progress(int percent) {
@@ -120,7 +123,7 @@ void GrindingScreenArc::update_progress(int percent) {
         return;
     }
     displayed_progress = percent;
-    lv_arc_set_value(progress_arc, percent);
+    lv_bar_set_value(progress_bar, percent, LV_ANIM_OFF);
     if (time_mode && target_time_seconds_ > 0.0f && percent < 100) { // leave final weight visible when done
         // Show elapsed time in center instead of sensor weight
         float elapsed_s = (percent / 100.0f) * target_time_seconds_;
