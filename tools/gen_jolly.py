@@ -216,10 +216,14 @@ def make_strain_frames(base):
     cells(d, MOUTH[0] - 5, MOUTH[1] + 5, [".#.#.#.", "#.#.#.#"], ink)
 
     frames = []
-    # (squash, shake_x, flush, sweat_drop, vein_big)
-    beats = [(1.00, -5, 0.30, 0, False), (0.94, 5, 0.42, 5, True),
-             (0.90, -5, 0.52, 10, True), (0.94, 5, 0.42, 15, False)]
-    for squash, shake, flush, drop, vein_big in beats:
+    # (squash, shake_x, flush, sweat_drop, vein_big, shout, steam)
+    beats = [
+        (0.92, -10, 0.45, 0, False, None, 0),
+        (0.82, 10, 0.65, 8, True, "HNNG!", 1),
+        (0.76, -10, 0.80, 16, True, "HNNNG!!", 2),
+        (0.84, 10, 0.60, 24, False, "HNNG!", 1),
+    ]
+    for squash, shake, flush, drop, vein_big, shout, steam in beats:
         f = face.copy()
         fpx = f.load()
         # Flush the face red.
@@ -229,31 +233,94 @@ def make_strain_frames(base):
                 r, g, b = fpx[x, y]
                 if r + g + b > 450:  # skin, not ink
                     fpx[x, y] = (min(255, int(r + (255 - r) * flush)),
-                                 int(g * (1 - flush * 0.55)), int(b * (1 - flush * 0.55)))
+                                 int(g * (1 - flush * 0.6)), int(b * (1 - flush * 0.6)))
         fd = ImageDraw.Draw(f)
         # Big effort blush.
         for cx, cy in CHEEKS:
-            cells(fd, cx, cy, ["###", "###"], (240, 90, 110))
-        # Sweat drops sliding down.
-        for sx, sy in ((80, 95), (225, 105)):
+            cells(fd, cx - 5, cy, ["####", "####"], (235, 60, 90))
+        # Sweat flying off.
+        for sx, sy in ((75, 85), (230, 95), (90, 150), (215, 160)):
             cells(fd, sx, sy + drop, [".#.", "###", "###", ".#."], sweat)
             cells(fd, sx + 5, sy + drop + 5, ["#"], sweat_hi)
-        # Strain vein (pulses).
-        vx, vy = 205, 50
-        if vein_big:
-            cells(fd, vx, vy, ["##.##", "#...#", ".....", "#...#", "##.##"], vein)
-        else:
-            cells(fd, vx + 5, vy + 5, ["#.#", "...", "#.#"], vein)
+        # Strain veins (pulse).
+        for vx, vy in ((205, 50), (85, 60)):
+            if vein_big:
+                cells(fd, vx, vy, ["##.##", "#...#", ".....", "#...#", "##.##"], vein)
+            else:
+                cells(fd, vx + 5, vy + 5, ["#.#", "...", "#.#"], vein)
 
-        # Crouch: squash on the feet, widen a little; then shake sideways.
+        # Crouch hard onto the seat, widen, and shake.
         w, h = f.size
         nh = int(h * squash)
-        nw = int(w * (1 + (1 - squash) * 0.6))
+        nw = int(w * (1 + (1 - squash) * 0.8))
         squashed = f.resize((nw, nh), Image.NEAREST)
+        mask = squashed.convert("L").point(lambda v: 255 if v > 0 else 0)
         out = Image.new("RGB", (w, h))
-        out.paste(squashed, ((w - nw) // 2 + shake, int(FEET_Y - FEET_Y * squash)))
+        out.paste(squashed, ((w - nw) // 2 + shake, int(FEET_Y - FEET_Y * squash)), mask)
+
+        od = ImageDraw.Draw(out)
+        head_top = int(FEET_Y - (FEET_Y - 45) * squash)
+        draw_toilet(od)
+        # Shaking motion lines.
+        for ly in (130, 165, 200):
+            off = 0 if shake < 0 else 6
+            od.rectangle([12 + off, ly, 32 + off, ly + 4], fill=(225, 225, 235))
+            od.rectangle([288 - off, ly, 308 - off, ly + 4], fill=(225, 225, 235))
+        # Steam puffing off the head.
+        for i in range(steam + 1):
+            for px0 in (110 - i * 22, 205 + i * 22):
+                py0 = head_top - 18 - i * 14
+                od.ellipse([px0, py0, px0 + 18 + i * 4, py0 + 14 + i * 4], fill=(235, 235, 240))
+        if shout:
+            draw_shout(out, shout, head_top)
         frames.append(out)
     return frames
+
+
+def draw_toilet(d):
+    """Front view of a toilet Jolly is sitting on, plus a TP roll."""
+    white, shade, line = (242, 245, 250), (195, 203, 215), (85, 95, 110)
+    # Bowl, rim, base.
+    d.polygon([(62, 262), (258, 262), (232, 300), (88, 300)], fill=white, outline=line)
+    d.polygon([(150, 266), (250, 266), (228, 296), (150, 296)], fill=shade)
+    d.ellipse([42, 240, 278, 272], fill=white, outline=line, width=3)
+    d.ellipse([70, 248, 250, 262], fill=shade)
+    d.rectangle([115, 298, 205, 312], fill=white, outline=line, width=3)
+    # Toilet paper roll on the floor to the right.
+    d.rectangle([268, 262, 306, 300], fill=white, outline=line, width=2)
+    d.ellipse([268, 254, 306, 270], fill=(225, 230, 238), outline=line, width=2)
+    d.ellipse([281, 258, 293, 266], fill=(150, 130, 105))
+    d.rectangle([272, 300, 290, 316], fill=white, outline=line, width=2)
+
+
+def draw_shout(img, text, head_top):
+    """Effort shout centered above the head. Letters come from the font; the
+    '!' marks are drawn by hand so the dot stays separate at 112px."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    word = text.rstrip("!")
+    bangs = len(text) - len(word)
+    font = ImageFont.load_default(size=13)
+    tw = int(ImageDraw.Draw(img).textlength(word, font=font))
+    small = Image.new("L", (tw + 4, 16))
+    ImageDraw.Draw(small).text((2, 0), word, fill=255, font=font)
+    big = small.resize((small.width * 3, small.height * 3), Image.NEAREST)
+    mask = big.point(lambda v: 255 if v > 110 else 0)
+
+    bang_w, gap, bar_h = 10, 8, 26
+    total_w = mask.width + bangs * (bang_w + gap)
+    x = (img.width - total_w) // 2
+    y = max(30, head_top - mask.height - 30)
+    shout = Image.new("L", (total_w, mask.height))
+    shout.paste(mask, (0, 0))
+    sd = ImageDraw.Draw(shout)
+    for i in range(bangs):
+        bx = mask.width + gap // 2 + i * (bang_w + gap)
+        sd.rectangle([bx, 4, bx + bang_w - 1, 4 + bar_h], fill=255)
+        sd.rectangle([bx, 4 + bar_h + 9, bx + bang_w - 1, 4 + bar_h + 9 + bang_w - 1], fill=255)
+    for dx, dy in ((-3, 0), (3, 0), (0, -3), (0, 3)):
+        img.paste((90, 20, 20), (x + dx, y + dy), shout)
+    img.paste((255, 220, 60), (x, y), shout)
 
 
 def write_sources(out_dir, idle, strain):
