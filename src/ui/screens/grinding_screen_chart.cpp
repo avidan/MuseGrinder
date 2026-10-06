@@ -18,10 +18,10 @@ void GrindingScreenChart::create() {
     lv_obj_set_layout(screen, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(screen, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_gap(screen, 15, 0);
+    lv_obj_set_style_pad_gap(screen, 8, 0);
 
     // Muse mascot — strains while grinding (first child, top of column)
-    mascot.create(screen);
+    mascot.create(screen, 352); // ~1.4x (154px)
 
     // Profile name label
     profile_label = lv_label_create(screen);
@@ -31,7 +31,7 @@ void GrindingScreenChart::create() {
 
     // Create chart - use full screen width (shrunk to make room for the mascot)
     chart = lv_chart_create(screen);
-    lv_obj_set_size(chart, LV_PCT(100), 100);
+    lv_obj_set_size(chart, LV_PCT(100), 80);
     lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(chart, MAX_CHART_POINTS);
     lv_chart_set_div_line_count(chart, 0, 0);  // No grid lines for clean look

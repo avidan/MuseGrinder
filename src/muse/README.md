@@ -59,10 +59,9 @@ played from frames converted out of the gadget SDK's `esp32/avatar/jollybot.gif`
 
 - **Idle:** the authentic happy-bounce loop (19 frames @ 160ms).
 - **Straining** (motor running): 4 frames @ 110ms generated from Jolly's
-  neutral pose — Jolly crouched on a toilet (with a TP roll), eyes squeezed
-  shut (`> <`), clenched zigzag mouth, deep-red face, flying sweat, pulsing
-  strain veins, steam puffs, shaking motion lines, and a "HNNG!" /
-  "HNNNG!!" shout. The gag is the real grounds falling from the chute; the
+  neutral pose — Jolly crouched on a toilet (tank behind, seat and bowl in
+  front), eyes squeezed shut (`> <`), clenched zigzag mouth, deep-red face,
+  flying sweat, pulsing strain veins, and shaking motion lines. The gag is the real grounds falling from the chute; the
   mascot itself stays clean: no feces drawn, ever.
 - **Relieved:** back to the happy loop on grind complete / timeout.
 
@@ -87,9 +86,11 @@ does not cover it, so the frames are **never committed** to this repo.
   decoded back from the RGB565 frames — don't commit these either):
   `python3 tools/gen_jolly.py --out-dir /tmp/jolly --preview /tmp/jolly`
 
-Wiring: `GrindingScreenArc` (default layout) headlines the mascot and swaps
-the 200px progress arc for a slim progress bar; `GrindingScreenChart` gets
-the mascot above the profile label (chart shrunk 140→100px to fit).
+Wiring: `GrindingScreenArc` (default layout) headlines the mascot at ~1.56x
+(175px) and swaps the 200px progress arc for a slim progress bar;
+`GrindingScreenChart` gets the mascot at ~1.4x (154px) above the profile
+label (chart shrunk 140→80px to fit). Scaling is nearest-neighbour so the
+pixel art stays crisp.
 `GrindingScreen::set_straining(bool)` fans out to both layouts; `UIManager`
 sets it true on `GRINDING`, false on `GRIND_COMPLETE` / `GRIND_TIMEOUT`.
 Animation runs on an `lv_timer` (50ms) that picks the frame from the tick

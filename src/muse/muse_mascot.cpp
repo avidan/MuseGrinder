@@ -6,7 +6,7 @@ void MuseMascot::create(lv_obj_t* parent, uint16_t scale) {
     const int32_t h = JOLLY_FRAME_H * scale / 256;
 
     root = lv_obj_create(parent);
-    lv_obj_set_size(root, w + 8, h + 8);
+    lv_obj_set_size(root, w, h);
     lv_obj_set_style_bg_opa(root, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(root, 0, 0);
     lv_obj_set_style_pad_all(root, 0, 0);
