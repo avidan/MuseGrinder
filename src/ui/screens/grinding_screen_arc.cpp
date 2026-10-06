@@ -19,8 +19,8 @@ void GrindingScreenArc::create() {
     lv_obj_set_style_pad_gap(screen, 6, 0);
 
     // Muse mascot — the star of the show. Strains while grinding.
-    // ~1.56x (175px): the largest that fits above the labels and bar.
-    mascot.create(screen, 400);
+    // ~1.4x (157x174px): the largest that fits above the labels and bar.
+    mascot.create(screen, 360);
 
     // Profile name label
     profile_label = lv_label_create(screen);

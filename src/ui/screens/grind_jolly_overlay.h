@@ -3,8 +3,8 @@
 #include "../../muse/muse_mascot.h"
 
 // Full-screen Jolly that replaces the grinding UI:
-//  - straining while a grind runs (toilet on the bottom edge)
-//  - dancing once the grind completes
+//  - straining on the toilet while a grind runs
+//  - dancing on the toilet once the grind completes
 // It covers everything else; tapping it does what the hidden grind button
 // would (stop while grinding, dismiss when complete).
 class GrindJollyOverlay {

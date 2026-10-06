@@ -57,7 +57,8 @@ closes once the grinder joins. Thereafter: `http://musegrinder.local`.
 The grinding screen's main visual is the real Jolly — Meta's Muse mascot —
 played from frames converted out of the gadget SDK's `esp32/avatar/jollybot.gif`.
 
-- **Idle:** the authentic happy-bounce loop (19 frames @ 160ms).
+- **Idle / done:** the authentic happy dance (15 frames @ 200ms), sitting on
+  the same toilet — hearts, waving arms, blinking.
 - **Straining** (motor running): 4 frames @ 110ms generated from Jolly's
   neutral pose — Jolly crouched on a toilet (tank behind, seat and bowl in
   front), eyes squeezed shut (`> <`), clenched zigzag mouth, deep-red face,
@@ -78,7 +79,7 @@ does not cover it, so the frames are **never committed** to this repo.
 - The script finds the GIF via `$JOLLY_GIF`, or `<repo>/../muse-gadget-sdk`,
   or `~/workspace/coffee-gadgets/muse-gadget-sdk`. If it can't find it, the
   build fails with instructions — set the env var and rebuild.
-- 23 frames @ 112x112 RGB565 ≈ 563 KiB of flash. Tune `FRAME_W`/`FRAME_STEP`
+- 19 frames @ 112x124 RGB565 ≈ 515 KiB of flash. Tune `FRAME_W`/`FRAME_STEP`
   in `gen_jolly.py` if the app partition gets tight. The straining edits
   (eye/mouth/face boxes) are constants at the top of the script, in the
   GIF's 320px source coordinates.
@@ -86,9 +87,9 @@ does not cover it, so the frames are **never committed** to this repo.
   decoded back from the RGB565 frames — don't commit these either):
   `python3 tools/gen_jolly.py --out-dir /tmp/jolly --preview /tmp/jolly`
 
-Wiring: `GrindingScreenArc` (default layout) headlines the mascot at ~1.56x
-(175px) and swaps the 200px progress arc for a slim progress bar;
-`GrindingScreenChart` gets the mascot at ~1.4x (154px) above the profile
+Wiring: `GrindingScreenArc` (default layout) headlines the mascot at ~1.4x
+(157x174px) and swaps the 200px progress arc for a slim progress bar;
+`GrindingScreenChart` gets the mascot at 1.25x (140x155px) above the profile
 label (chart shrunk 140→80px to fit). Scaling is nearest-neighbour so the
 pixel art stays crisp.
 `GrindingScreen::set_straining(bool)` fans out to both layouts; `UIManager`
@@ -99,9 +100,10 @@ clock; `tick()` early-outs while hidden.
 While a grind runs, `GrindJollyOverlay` shows only the straining Jolly at
 3x (336x372, edges slightly clipped), toilet on the bottom edge of the
 screen; tap to stop. When the grind completes it switches to the dancing
-Jolly at 2.5x (full width), alone on screen; tap to dismiss (the OK button).
-Timeouts show the normal screen so the error is visible. Straining frames use their own tighter crop
-(`STRAIN_CROP`, 112x124) so the scene fills more of the display.
+Jolly, same toilet and size, alone on screen; tap to dismiss (the OK button).
+Timeouts show the normal screen so the error is visible. Both loops use the
+same tight crop (`SCENE_CROP`, 112x124) so the scene fills more of the
+display and Jolly doesn't jump between them.
 
 **Menu → Tools → Jolly** shows the animation at 2x. Tap Jolly or flip the
 Straining switch to swap between the idle and grinding animations.

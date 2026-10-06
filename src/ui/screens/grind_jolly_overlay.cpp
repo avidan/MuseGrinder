@@ -2,11 +2,10 @@
 #include "../../config/constants.h"
 
 namespace {
-// Straining: 3x (336x372). Wider than the 280px screen, so the edges of the
-// shake clip slightly, but Jolly and the toilet fill most of the display.
-constexpr uint16_t kStrainScale = 768;
-// Dancing: 2.5x (280x280), the full screen width.
-constexpr uint16_t kDanceScale = 640;
+// Both loops are the same toilet scene, shown at 3x (336x372) with the toilet
+// on the bottom edge. Wider than the 280px screen, so the edges clip
+// slightly, but Jolly and the toilet fill most of the display.
+constexpr uint16_t kJollyScale = 768;
 
 void set_shown(lv_obj_t* o, bool shown) {
     if (shown) lv_obj_clear_flag(o, LV_OBJ_FLAG_HIDDEN);
@@ -30,12 +29,12 @@ void GrindJollyOverlay::create(TapHandler handler, void* ctx) {
     lv_obj_add_flag(overlay, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(overlay, tapped_cb, LV_EVENT_CLICKED, this);
 
-    straining.create(overlay, kStrainScale);
+    straining.create(overlay, kJollyScale);
     straining.setStraining(true);
     lv_obj_align(straining.get_root(), LV_ALIGN_BOTTOM_MID, 0, 0);  // toilet on the bottom edge
 
-    dancing.create(overlay, kDanceScale);
-    lv_obj_center(dancing.get_root());
+    dancing.create(overlay, kJollyScale);
+    lv_obj_align(dancing.get_root(), LV_ALIGN_BOTTOM_MID, 0, 0);
 
     hide();
 }

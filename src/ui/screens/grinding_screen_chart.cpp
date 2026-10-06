@@ -21,7 +21,7 @@ void GrindingScreenChart::create() {
     lv_obj_set_style_pad_gap(screen, 8, 0);
 
     // Muse mascot — strains while grinding (first child, top of column)
-    mascot.create(screen, 352); // ~1.4x (154px)
+    mascot.create(screen, 320); // 1.25x (140x155px)
 
     // Profile name label
     profile_label = lv_label_create(screen);

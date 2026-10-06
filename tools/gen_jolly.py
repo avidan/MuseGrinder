@@ -19,14 +19,14 @@ import os
 import pathlib
 import sys
 
+# Both loops show Jolly on the toilet with the same tight crop (source px),
+# so Jolly stays put when switching between dancing and straining. The
+# bottom edge sits just under the pedestal.
 FRAME_W = 112
-FRAME_H = 112
-# Straining frames get their own tight crop around Jolly + toilet (source px),
-# so they fill more of the screen. Bottom edge sits just under the pedestal.
-STRAIN_CROP = (28, 16, 292, 310)
-STRAIN_W = 112
-STRAIN_H = 124
-FRAME_STEP = 4          # every 4th GIF frame (40ms -> 160ms per frame)
+FRAME_H = 124
+SCENE_CROP = (28, 16, 292, 310)
+HAPPY_SQUASH = 0.90           # sitting down on the seat
+FRAME_STEP = 5          # every 5th GIF frame (40ms -> 200ms per frame)
 BLACK_THRESHOLD = 16    # pixels darker than this count as background
 STRAIN_FRAME_MS = 110   # straining loop speed
 
@@ -93,32 +93,15 @@ def main():
         gif.seek(i)
         frames.append(gif.convert("RGB"))
 
-    # Union bbox of non-black pixels across sampled frames.
-    x0, y0, x1, y1 = gif.width, gif.height, 0, 0
-    for fr in frames:
-        px = fr.load()
-        for y in range(0, gif.height, 2):
-            for x in range(0, gif.width, 2):
-                r, g, b = px[x, y]
-                if r > BLACK_THRESHOLD or g > BLACK_THRESHOLD or b > BLACK_THRESHOLD:
-                    if x < x0: x0 = x
-                    if y < y0: y0 = y
-                    if x > x1: x1 = x
-                    if y > y1: y1 = y
-    pad = 6
-    x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
-    x1, y1 = min(gif.width, x1 + pad), min(gif.height, y1 + pad)
-
-    crop_box = (x0, y0, x1, y1)
-    idle = [to_rgb565(fr, crop_box) for fr in frames]
+    idle = [to_rgb565(f, SCENE_CROP) for f in make_happy_frames(frames)]
 
     gif.seek(STRAIN_BASE_FRAME)
     base = gif.convert("RGB")
-    strain = [to_rgb565(f, STRAIN_CROP, STRAIN_W, STRAIN_H) for f in make_strain_frames(base)]
+    strain = [to_rgb565(f, SCENE_CROP) for f in make_strain_frames(base)]
 
     kib = (sum(map(len, idle)) + sum(map(len, strain))) // 1024
-    print(f"gen_jolly: {len(idle)} idle frames {FRAME_W}x{FRAME_H} + {len(strain)} straining "
-          f"frames {STRAIN_W}x{STRAIN_H}, RGB565 ({kib} KiB flash)")
+    print(f"gen_jolly: {len(idle)} dancing + {len(strain)} straining frames, "
+          f"{FRAME_W}x{FRAME_H} RGB565 ({kib} KiB flash)")
 
     write_sources(out_dir, idle, strain)
     print(f"gen_jolly: wrote {out_dir / 'jolly_anim.c'} and jolly_anim.h")
@@ -162,6 +145,97 @@ def cells(draw, x0, y0, pattern, color):
                 draw.rectangle([x, y, x + ART_CELL - 1, y + ART_CELL - 1], fill=color)
 
 
+def extract_jolly(frame, keep_hearts):
+    """Cut Jolly out by silhouette. Returns (image on black, mask).
+
+    Background is only what's reachable from the image edge through dark or
+    lavender (sparkle/dot) pixels, so dark eyes and outlines inside Jolly stay
+    opaque. Keeps the largest shape (the body), plus the pink hearts if asked.
+    """
+    from PIL import Image
+
+    src = frame.load()
+    w, h = frame.size
+
+    def is_bg(p):
+        r, g, b = p
+        return max(r, g, b) <= BLACK_THRESHOLD * 3 or b > r + 15
+
+    # Flood the background in from the edges.
+    outside = bytearray(w * h)
+    stack = [(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for y in range(h) for x in (0, w - 1)]
+    while stack:
+        x, y = stack.pop()
+        i = y * w + x
+        if outside[i] or not is_bg(src[x, y]):
+            continue
+        outside[i] = 1
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < w and 0 <= ny < h and not outside[ny * w + nx]:
+                stack.append((nx, ny))
+
+    # Group what's left into shapes.
+    label = [0] * (w * h)
+    shapes = []
+    for sy in range(h):
+        for sx in range(w):
+            i0 = sy * w + sx
+            if outside[i0] or label[i0]:
+                continue
+            shape, stack = [], [(sx, sy)]
+            label[i0] = len(shapes) + 1
+            while stack:
+                x, y = stack.pop()
+                shape.append((x, y))
+                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    j = ny * w + nx
+                    if 0 <= nx < w and 0 <= ny < h and not outside[j] and not label[j]:
+                        label[j] = label[i0]
+                        stack.append((nx, ny))
+            shapes.append(shape)
+
+    def is_heart(shape):
+        r = sum(src[x, y][0] for x, y in shape) / len(shape)
+        g = sum(src[x, y][1] for x, y in shape) / len(shape)
+        return r - g > 60
+
+    largest = max(shapes, key=len)
+    out = Image.new("RGB", (w, h))
+    mask = Image.new("L", (w, h))
+    opx, mpx = out.load(), mask.load()
+    for shape in shapes:
+        if shape is largest or (keep_hearts and is_heart(shape)):
+            for x, y in shape:
+                opx[x, y] = src[x, y]
+                mpx[x, y] = 255
+    return out, mask
+
+
+def seat_on_toilet(jolly, mask, squash, shake=0):
+    """Compose Jolly onto the toilet: tank behind, seat and bowl in front.
+    squash < 1 lowers Jolly onto the seat (pivoting on the feet)."""
+    from PIL import Image, ImageChops, ImageDraw
+
+    # Anything drawn onto Jolly outside the silhouette (sweat, veins) counts too.
+    mask = ImageChops.lighter(mask, jolly.convert("L").point(lambda v: 255 if v > 0 else 0))
+    w, h = jolly.size
+    nh = int(h * squash)
+    nw = int(w * (1 + (1 - squash) * 0.8))
+    squashed = jolly.resize((nw, nh), Image.NEAREST)
+    squashed_mask = mask.resize((nw, nh), Image.NEAREST)
+    out = Image.new("RGB", (w, h))
+    d = ImageDraw.Draw(out)
+    draw_toilet_tank(d)
+    out.paste(squashed, ((w - nw) // 2 + shake, int(FEET_Y - FEET_Y * squash)), squashed_mask)
+    draw_toilet_bowl(d)
+    return out
+
+
+def make_happy_frames(frames):
+    """The original dancing loop (arms, bounce, hearts), sitting on the toilet."""
+    return [seat_on_toilet(*extract_jolly(f, keep_hearts=True), HAPPY_SQUASH) for f in frames]
+
+
 def make_strain_frames(base):
     """Jolly squeezing hard: eyes shut, teeth gritted, face flushed, crouching
     and shaking, sweating, with a strain vein. No poop is drawn — the real
@@ -173,40 +247,8 @@ def make_strain_frames(base):
     sweat_hi = (225, 245, 255)
     vein = (230, 40, 50)
 
-    # Keep only Jolly: the largest connected non-background region. Drops the
-    # sparkles and the dotted background.
-    face = base.copy()
+    face, face_mask = extract_jolly(base, keep_hearts=False)
     px = face.load()
-    w, h = face.size
-
-    def is_bg(p):
-        r, g, b = p
-        return max(r, g, b) <= BLACK_THRESHOLD * 3 or b > r + 15
-
-    seen = bytearray(w * h)
-    best = []
-    for sy in range(h):
-        for sx in range(w):
-            if seen[sy * w + sx] or is_bg(px[sx, sy]):
-                continue
-            region, stack = [], [(sx, sy)]
-            seen[sy * w + sx] = 1
-            while stack:
-                x, y = stack.pop()
-                region.append((x, y))
-                for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-                    if 0 <= nx < w and 0 <= ny < h and not seen[ny * w + nx] and not is_bg(px[nx, ny]):
-                        seen[ny * w + nx] = 1
-                        stack.append((nx, ny))
-            if len(region) > len(best):
-                best = region
-    keep = bytearray(w * h)
-    for x, y in best:
-        keep[y * w + x] = 1
-    for y in range(h):
-        for x in range(w):
-            if not keep[y * w + x]:
-                px[x, y] = (0, 0, 0)
 
     skin = px[160, 132]
     d = ImageDraw.Draw(face)
@@ -255,16 +297,8 @@ def make_strain_frames(base):
                 cells(fd, vx + 5, vy + 5, ["#.#", "...", "#.#"], vein)
 
         # Crouch hard onto the seat, widen, and shake.
-        w, h = f.size
-        nh = int(h * squash)
-        nw = int(w * (1 + (1 - squash) * 0.8))
-        squashed = f.resize((nw, nh), Image.NEAREST)
-        mask = squashed.convert("L").point(lambda v: 255 if v > 0 else 0)
-        out = Image.new("RGB", (w, h))
+        out = seat_on_toilet(f, face_mask, squash, shake)
         od = ImageDraw.Draw(out)
-        draw_toilet_tank(od)  # behind Jolly
-        out.paste(squashed, ((w - nw) // 2 + shake, int(FEET_Y - FEET_Y * squash)), mask)
-        draw_toilet_bowl(od)  # in front of Jolly
         # Shaking motion lines.
         for ly in (130, 165, 200):
             off = 0 if shake < 0 else 6
@@ -310,8 +344,8 @@ def write_sources(out_dir, idle, strain):
 #define JOLLY_FRAME_H {FRAME_H}
 #define JOLLY_FRAME_COUNT {len(idle)}
 #define JOLLY_FRAME_MS {40 * FRAME_STEP}
-#define JOLLY_STRAIN_W {STRAIN_W}
-#define JOLLY_STRAIN_H {STRAIN_H}
+#define JOLLY_STRAIN_W {FRAME_W}
+#define JOLLY_STRAIN_H {FRAME_H}
 #define JOLLY_STRAIN_COUNT {len(strain)}
 #define JOLLY_STRAIN_FRAME_MS {STRAIN_FRAME_MS}
 
@@ -367,7 +401,7 @@ def write_previews(preview_dir, idle, strain):
 
     preview_dir.mkdir(parents=True, exist_ok=True)
     for name, bufs, ms, w, h in (("jolly_idle.gif", idle, 40 * FRAME_STEP, FRAME_W, FRAME_H),
-                                 ("jolly_straining.gif", strain, STRAIN_FRAME_MS, STRAIN_W, STRAIN_H)):
+                                 ("jolly_straining.gif", strain, STRAIN_FRAME_MS, FRAME_W, FRAME_H)):
         imgs = [from_rgb565(b, w, h).resize((w * 3, h * 3), Image.NEAREST) for b in bufs]
         imgs[0].save(preview_dir / name, save_all=True, append_images=imgs[1:],
                      duration=ms, loop=0)
