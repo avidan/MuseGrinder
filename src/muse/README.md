@@ -59,7 +59,7 @@ played from frames converted out of the gadget SDK's `esp32/avatar/jollybot.gif`
 
 - **Idle / done:** the authentic happy dance (15 frames @ 200ms), sitting on
   the same toilet — hearts, waving arms, blinking.
-- **Straining** (motor running): 4 frames @ 110ms generated from Jolly's
+- **Straining** (motor running): 4 frames @ 220ms generated from Jolly's
   neutral pose — Jolly crouched on a toilet (tank behind, seat and bowl in
   front), eyes squeezed shut (`> <`), clenched zigzag mouth, deep-red face,
   flying sweat, pulsing strain veins, and shaking motion lines. The gag is the real grounds falling from the chute; the
@@ -103,7 +103,7 @@ UI cycle and starved `loop()` — and with it the Muse HTTP server.
 While a grind runs, `GrindJollyOverlay` shows only the straining Jolly at
 3x (336x372, edges slightly clipped), toilet on the bottom edge of the
 screen; tap to stop. When the grind completes it switches to the dancing
-Jolly, same toilet and size, alone on screen, for 3s
+Jolly, same toilet and size, alone on screen, for 5s
 (`USER_GRIND_COMPLETE_DISPLAY_MS`) before returning to dose selection; tap
 to return sooner.
 Timeouts show the normal screen so the error is visible. Both loops use the
