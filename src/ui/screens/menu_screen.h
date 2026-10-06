@@ -5,6 +5,7 @@
 #include "../../controllers/grind_controller.h"
 #include "../../system/diagnostics_controller.h"
 #include "../ui_helpers.h"
+#include "../../muse/muse_mascot.h"
 
 class GrindingScreen;  // Forward declaration
 
@@ -17,6 +18,9 @@ private:
     lv_obj_t* display_page;
     lv_obj_t* grind_mode_page;
     lv_obj_t* data_page;
+    lv_obj_t* jolly_page;
+    lv_obj_t* jolly_strain_toggle;
+    MuseMascot jolly_preview;
     lv_obj_t* stats_page;
     lv_obj_t* diagnostics_page;
     lv_obj_t* scale_page;
@@ -158,6 +162,9 @@ private:
     void create_grind_mode_page(lv_obj_t* parent);
     void create_scale_page(lv_obj_t* parent);
     void create_data_page(lv_obj_t* parent);
+    void create_jolly_page(lv_obj_t* parent);
+    static void jolly_preview_tapped_cb(lv_event_t* e);
+    static void jolly_strain_toggled_cb(lv_event_t* e);
     void create_stats_page(lv_obj_t* parent);
     void create_diagnostics_page(lv_obj_t* parent);
     lv_obj_t* create_separator(lv_obj_t* parent, const char* text = nullptr);

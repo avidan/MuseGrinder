@@ -57,11 +57,12 @@ closes once the grinder joins. Thereafter: `http://musegrinder.local`.
 The grinding screen's main visual is the real Jolly — Meta's Muse mascot —
 played from frames converted out of the gadget SDK's `esp32/avatar/jollybot.gif`.
 
-- **Idle:** the authentic happy-bounce loop (25 frames @ ~120ms).
-- **Straining** (motor running): the same frames with a side-to-side shudder,
-  squash-and-stretch pulse, and flickering motion lines — the gag being the
-  real grounds falling from the chute. The mascot itself stays clean: no
-  feces drawn, ever.
+- **Idle:** the authentic happy-bounce loop (19 frames @ 160ms).
+- **Straining** (motor running): 4 frames @ 110ms generated from Jolly's
+  neutral pose — eyes squeezed shut (`> <`), clenched zigzag mouth, red
+  face, sweat drops, pulsing strain vein, and a crouch-and-shake. The gag is
+  the real grounds falling from the chute; the mascot itself stays clean:
+  no feces drawn, ever.
 - **Relieved:** back to the happy loop on grind complete / timeout.
 
 ### Build-time art pipeline (read this before flashing)
@@ -77,12 +78,21 @@ does not cover it, so the frames are **never committed** to this repo.
 - The script finds the GIF via `$JOLLY_GIF`, or `<repo>/../muse-gadget-sdk`,
   or `~/workspace/coffee-gadgets/muse-gadget-sdk`. If it can't find it, the
   build fails with instructions — set the env var and rebuild.
-- 25 frames @ 112x112 RGB565 ≈ 612 KiB of flash. Tune `FRAME_W`/`FRAME_STEP`
-  in `gen_jolly.py` if the app partition gets tight.
+- 23 frames @ 112x112 RGB565 ≈ 563 KiB of flash. Tune `FRAME_W`/`FRAME_STEP`
+  in `gen_jolly.py` if the app partition gets tight. The straining edits
+  (eye/mouth/face boxes) are constants at the top of the script, in the
+  GIF's 320px source coordinates.
+- Preview what the device will show without flashing (3x animated GIFs,
+  decoded back from the RGB565 frames — don't commit these either):
+  `python3 tools/gen_jolly.py --out-dir /tmp/jolly --preview /tmp/jolly`
 
 Wiring: `GrindingScreenArc` (default layout) headlines the mascot and swaps
 the 200px progress arc for a slim progress bar; `GrindingScreenChart` gets
 the mascot above the profile label (chart shrunk 140→100px to fit).
 `GrindingScreen::set_straining(bool)` fans out to both layouts; `UIManager`
 sets it true on `GRINDING`, false on `GRIND_COMPLETE` / `GRIND_TIMEOUT`.
-Animation runs on an `lv_timer` (100ms); `tick()` early-outs while hidden.
+Animation runs on an `lv_timer` (50ms) that picks the frame from the tick
+clock; `tick()` early-outs while hidden.
+
+**Menu → Tools → Jolly** shows the animation at 2x. Tap Jolly or flip the
+Straining switch to swap between the idle and grinding animations.

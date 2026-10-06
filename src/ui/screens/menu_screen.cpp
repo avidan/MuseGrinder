@@ -148,12 +148,17 @@ void MenuScreen::create_menu_ui() {
     diagnostics_page = lv_menu_page_create(menu, "Diagnostics");
     create_diagnostics_page(diagnostics_page);
 
+    jolly_page = lv_menu_page_create(menu, "Jolly");
+    create_jolly_page(jolly_page);
+
     // Create menu items grouped with separators
     create_separator(main_page, "Tools");
     scale_item = create_menu_item(main_page, "Scale");
     cal_button = create_menu_item(main_page, "Calibrate");
     autotune_button = create_menu_item(main_page, "Tune Pulses");
     motor_test_button = create_menu_item(main_page, "Motor Test");
+    lv_obj_t* jolly_item = create_menu_item(main_page, "Jolly");
+    lv_menu_set_load_page_event(menu, jolly_item, jolly_page);
 
     lv_menu_set_load_page_event(menu, scale_item, scale_page);
 
@@ -504,6 +509,37 @@ void MenuScreen::create_scale_page(lv_obj_t* parent) {
         lv_obj_add_event_cb(scale_tare_button, EventBridgeLVGL::dispatch_event, LV_EVENT_CLICKED,
                            reinterpret_cast<void*>(static_cast<intptr_t>(ET::MENU_SCALE_TARE)));
     }
+}
+
+void MenuScreen::create_jolly_page(lv_obj_t* parent) {
+    lv_obj_set_layout(parent, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scroll_dir(parent, LV_DIR_VER);
+
+    create_description_label(parent, "The grinding animation. Tap Jolly or use the switch to preview.");
+
+    // 2x pixel-art preview; tapping it toggles straining.
+    jolly_preview.create(parent, 512);
+    lv_obj_t* preview = jolly_preview.get_root();
+    lv_obj_add_flag(preview, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(preview, jolly_preview_tapped_cb, LV_EVENT_CLICKED, this);
+
+    create_toggle_row(parent, "Straining", &jolly_strain_toggle);
+    lv_obj_add_event_cb(jolly_strain_toggle, jolly_strain_toggled_cb, LV_EVENT_VALUE_CHANGED, this);
+}
+
+void MenuScreen::jolly_preview_tapped_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    const bool straining = !self->jolly_preview.isStraining();
+    self->jolly_preview.setStraining(straining);
+    if (straining) lv_obj_add_state(self->jolly_strain_toggle, LV_STATE_CHECKED);
+    else lv_obj_clear_state(self->jolly_strain_toggle, LV_STATE_CHECKED);
+}
+
+void MenuScreen::jolly_strain_toggled_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    self->jolly_preview.setStraining(lv_obj_has_state(self->jolly_strain_toggle, LV_STATE_CHECKED));
 }
 
 void MenuScreen::create_data_page(lv_obj_t* parent) {
