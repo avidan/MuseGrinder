@@ -119,7 +119,15 @@ def main():
 #define JOLLY_FRAME_COUNT {count}
 #define JOLLY_FRAME_MS {40 * FRAME_STEP}
 
+#ifdef __cplusplus
+extern "C" {{
+#endif
+
 const lv_image_dsc_t* jolly_get_frame(int i);
+
+#ifdef __cplusplus
+}}
+#endif
 """
     (out_dir / "jolly_anim.h").write_text(h)
 
