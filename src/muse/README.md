@@ -98,7 +98,9 @@ clock; `tick()` early-outs while hidden.
 
 While a grind runs, `GrindJollyOverlay` shows only the straining Jolly at
 3x (336x372, edges slightly clipped), toilet on the bottom edge of the
-screen; tap to stop. Straining frames use their own tighter crop
+screen; tap to stop. When the grind completes it switches to the dancing
+Jolly at 2.5x (full width), alone on screen; tap to dismiss (the OK button).
+Timeouts show the normal screen so the error is visible. Straining frames use their own tighter crop
 (`STRAIN_CROP`, 112x124) so the scene fills more of the display.
 
 **Menu → Tools → Jolly** shows the animation at 2x. Tap Jolly or flip the

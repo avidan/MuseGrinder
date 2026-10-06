@@ -58,7 +58,7 @@ python3 tools/grinder.py analyze
 
 **Simulation Mode:** Menu → Tools → Simulation (NVS `simulation/enabled`, read once at boot by `SimulationMode::load()` in `src/system/simulation_mode.*`; changing it restarts the device). When active, `MockHX711Driver` replaces the HX711 (weight rises at `DEBUG_MOCK_FLOW_RATE_GPS` = 2.0 g/s while the motor is "on", with start delay/ramp/coast), the motor relay is never initialized or driven, calibration is fixed and not saved, and the background uses `THEME_COLOR_BACKGROUND_MOCK`. Check `SimulationMode::enabled()` instead of `DEBUG_ENABLE_LOADCELL_MOCK`; the `-mock` build env forces it on.
 
-**Grinding Overlay:** While in `UIState::GRINDING`, `GrindJollyOverlay` (top layer) shows only the straining Jolly at full width; tapping it stops the grind. It hides on any other state, so completion/timeout show the normal grinding screen with the happy Jolly.
+**Grinding Overlay:** While in `UIState::GRINDING`, `GrindJollyOverlay` (top layer) shows only the straining Jolly at full width; tapping it stops the grind. On `GRIND_COMPLETE` it shows only the dancing Jolly; tapping dismisses (same as OK). It hides on every other state, so timeouts show the normal grinding screen.
 
 **Time Mode Pulses:** Split-button completion screen (OK + PULSE), `TIME_ADDITIONAL_PULSE` phase, 100ms duration
 

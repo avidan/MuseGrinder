@@ -120,7 +120,7 @@ void UIManager::create_ui() {
     grind_jolly_overlay.create([](void* ctx) {
         auto* ui = static_cast<UIManager*>(ctx);
         if (ui->grinding_controller_) {
-            ui->grinding_controller_->handle_grind_button();  // GRINDING: stop
+            ui->grinding_controller_->handle_grind_button();  // stop / dismiss
         }
     }, this);
     
@@ -242,12 +242,13 @@ void UIManager::switch_to_state(UIState new_state) {
             LOG_UI_DEBUG("[%lums UI_SCREEN_VISIBLE] GRINDING screen showing\n", millis());
             grinding_screen.show();
             grinding_screen.set_straining(true); // Muse strains while grinding
-            grind_jolly_overlay.show();          // ...full screen, nothing else
+            grind_jolly_overlay.show_straining(); // ...full screen, nothing else
             break;
 
         case UIState::GRIND_COMPLETE:
             grinding_screen.show();
             grinding_screen.set_straining(false); // relieved
+            grind_jolly_overlay.show_dancing();   // full screen; tap to dismiss
             break;
 
         case UIState::GRIND_TIMEOUT:
