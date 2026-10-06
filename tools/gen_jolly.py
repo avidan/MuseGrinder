@@ -28,7 +28,7 @@ SCENE_CROP = (28, 16, 292, 310)
 HAPPY_SQUASH = 0.90           # sitting down on the seat
 FRAME_STEP = 5          # every 5th GIF frame (40ms -> 200ms per frame)
 BLACK_THRESHOLD = 16    # pixels darker than this count as background
-STRAIN_FRAME_MS = 220   # straining loop speed
+STRAIN_FRAME_MS = 160   # straining loop speed
 
 # Straining pose, in jollybot.gif's 320x320 source pixels. The art is drawn on
 # a 5px pixel-art grid; these boxes cover the neutral pose (GIF frame 0).

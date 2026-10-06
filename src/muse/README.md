@@ -59,7 +59,7 @@ played from frames converted out of the gadget SDK's `esp32/avatar/jollybot.gif`
 
 - **Idle / done:** the authentic happy dance (15 frames @ 200ms), sitting on
   the same toilet — hearts, waving arms, blinking.
-- **Straining** (motor running): 4 frames @ 220ms generated from Jolly's
+- **Straining** (motor running): 4 frames @ 160ms generated from Jolly's
   neutral pose — Jolly crouched on a toilet (tank behind, seat and bowl in
   front), eyes squeezed shut (`> <`), clenched zigzag mouth, deep-red face,
   flying sweat, pulsing strain veins, and shaking motion lines. The gag is the real grounds falling from the chute; the
