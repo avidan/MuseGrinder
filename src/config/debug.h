@@ -34,7 +34,7 @@
 //------------------------------------------------------------------------------
 // MOCK HARDWARE DETAILED CONFIGURATION
 //------------------------------------------------------------------------------
-#define DEBUG_MOCK_FLOW_RATE_GPS 1.9f                                             // Simulated continuous flow rate in grams per second
+#define DEBUG_MOCK_FLOW_RATE_GPS 2.0f                                             // Simulated continuous flow rate in grams per second
 #define DEBUG_MOCK_CAL_FACTOR -7050.0f                                            // Fixed calibration factor used during mocking
 #define DEBUG_MOCK_BASELINE_RAW 0x700000                                          // Baseline raw count around mid-scale for tare offset
 #define DEBUG_MOCK_IDLE_NOISE_RAW 60.0f                                           // Peak raw noise when idle (counts)

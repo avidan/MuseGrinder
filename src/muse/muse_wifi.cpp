@@ -29,6 +29,7 @@
 #include "controllers/grind_controller.h"
 #include "controllers/grind_mode.h"
 #include "hardware/WeightSensor.h"
+#include "system/simulation_mode.h"
 
 static WebServer museServer(80);
 static DNSServer museDns;
@@ -78,11 +79,12 @@ static void museHandleStatus() {
     snprintf(buf, sizeof(buf),
         "{\"grinding\":%s,\"weight_g\":%.2f,\"target_g\":%.1f,"
         "\"mode\":\"weight\",\"last_result\":\"%s\","
-        "\"firmware\":\"musegrinder-muse/1.0\"}",
+        "\"simulated\":%s,\"firmware\":\"musegrinder-muse/1.0\"}",
         museIsGrinding() ? "true" : "false",
         s_ws->get_display_weight(),
         s_gc->get_target_weight(),
-        museResultName(s_gc->get_last_session_result()));
+        museResultName(s_gc->get_last_session_result()),
+        SimulationMode::enabled() ? "true" : "false");
     museServer.send(200, "application/json", buf);
 }
 

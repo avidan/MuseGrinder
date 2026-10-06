@@ -18,6 +18,7 @@
 #include "../hardware/hardware_manager.h"
 #include "../hardware/WeightSensor.h"
 #include "../controllers/grind_controller.h"
+#include "../system/simulation_mode.h"
 
 extern HardwareManager hardware_manager;
 extern GrindController grind_controller;
@@ -1364,12 +1365,7 @@ void BluetoothManager::generate_diagnostic_report() {
     float heap_used_pct = (float(heap_total - heap_free) / float(heap_total)) * 100.0f;
     uint32_t flash_size = ESP.getFlashChipSize();
 
-    const char* driver_type =
-#ifdef MOCK_BUILD
-        "MOCK";
-#else
-        "REAL";
-#endif
+    const char* driver_type = SimulationMode::enabled() ? "SIMULATED" : "REAL";
 
     snprintf(buf, sizeof(buf),
         "[SYSTEM]\n"

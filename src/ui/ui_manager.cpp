@@ -1,4 +1,5 @@
 #include "ui_manager.h"
+#include "../system/simulation_mode.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <cmath>
@@ -82,11 +83,11 @@ void UIManager::create_ui() {
     // Set background style
     static lv_style_t style_screen;
     lv_style_init(&style_screen);
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-    lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND_MOCK));
-#else
-    lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND));
-#endif
+    if (SimulationMode::enabled()) {
+        lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND_MOCK));
+    } else {
+        lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND));
+    }
     lv_obj_add_style(lv_scr_act(), &style_screen, 0);
 
     // Create all screens
@@ -114,6 +115,14 @@ void UIManager::create_ui() {
     if (status_indicator_controller_) {
         status_indicator_controller_->build();
     }
+
+    // Created last so it sits above the status indicator on the top layer.
+    grind_jolly_overlay.create([](void* ctx) {
+        auto* ui = static_cast<UIManager*>(ctx);
+        if (ui->grinding_controller_) {
+            ui->grinding_controller_->handle_grind_button();  // GRINDING: stop
+        }
+    }, this);
     
     // Set up initial state
     ready_screen.hide();
@@ -210,6 +219,7 @@ void UIManager::switch_to_state(UIState new_state) {
     autotune_screen.hide();
     ota_screen.hide();
     ota_update_failed_screen.hide();
+    grind_jolly_overlay.hide();
 
     switch (new_state) {
         case UIState::READY:
@@ -232,6 +242,7 @@ void UIManager::switch_to_state(UIState new_state) {
             LOG_UI_DEBUG("[%lums UI_SCREEN_VISIBLE] GRINDING screen showing\n", millis());
             grinding_screen.show();
             grinding_screen.set_straining(true); // Muse strains while grinding
+            grind_jolly_overlay.show();          // ...full screen, nothing else
             break;
 
         case UIState::GRIND_COMPLETE:
@@ -373,11 +384,7 @@ void UIManager::set_background_active(bool active) {
         style_initialized = true;
     }
 
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-    lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND_MOCK);
-#else
-    lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND);
-#endif
+    lv_color_t inactive_color = SimulationMode::enabled() ? lv_color_hex(THEME_COLOR_BACKGROUND_MOCK) : lv_color_hex(THEME_COLOR_BACKGROUND);
     lv_color_t bg_color = active ? lv_color_hex(THEME_COLOR_GRINDER_ACTIVE) : inactive_color;
     lv_style_set_bg_color(&style_bg, bg_color);
     lv_obj_add_style(lv_scr_act(), &style_bg, 0);

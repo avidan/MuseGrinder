@@ -16,6 +16,7 @@
 #include "tasks/grind_control_task.h"
 #include "tasks/file_io_task.h"
 #include "muse/muse_wifi.h"
+#include "system/simulation_mode.h"
 
 HardwareManager hardware_manager;
 StateMachine state_machine;
@@ -108,6 +109,8 @@ void setup() {
         LOG_BLE("✅ LittleFS mounted successfully\n");
     }
     
+    // Before hardware init: picks the simulated load cell and disables the motor output.
+    SimulationMode::load();
     hardware_manager.init();
     profile_controller.init(hardware_manager.get_preferences());
     statistics_manager.init(hardware_manager.get_preferences());

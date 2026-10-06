@@ -10,9 +10,8 @@
 #include <cmath>
 #include <algorithm>
 
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
 #include "../hardware/mock_hx711_driver.h"
-#endif
+#include "../system/simulation_mode.h"
 
 // UI event queue size
 #define UI_EVENT_QUEUE_SIZE 10
@@ -1127,9 +1126,9 @@ void GrindController::start_additional_pulse() {
     grinder->start_pulse_rmt(pulse_duration_ms);
     
     // Notify mock driver for weight simulation (if mock is active)
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-    MockHX711Driver::notify_pulse(pulse_duration_ms);
-#endif
+    if (SimulationMode::enabled()) {
+        MockHX711Driver::notify_pulse(pulse_duration_ms);
+    }
 }
 
 bool GrindController::can_pulse() const {

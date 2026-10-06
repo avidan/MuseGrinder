@@ -1,4 +1,5 @@
 #include "grinding_controller.h"
+#include "../../system/simulation_mode.h"
 
 #include <Arduino.h>
 #include <cstdio>
@@ -552,11 +553,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
                 style_initialized = true;
             }
 
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-            lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND_MOCK);
-#else
-            lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND);
-#endif
+            lv_color_t inactive_color = SimulationMode::enabled() ? lv_color_hex(THEME_COLOR_BACKGROUND_MOCK) : lv_color_hex(THEME_COLOR_BACKGROUND);
             lv_color_t bg_color = event_data.background_active ?
                 lv_color_hex(THEME_COLOR_GRINDER_ACTIVE) :
                 inactive_color;

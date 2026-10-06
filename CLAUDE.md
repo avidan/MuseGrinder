@@ -36,7 +36,7 @@ python3 tools/grinder.py analyze
 - **GrindController**: 9-phase state machine with predictive flow control, 10 pulse corrections, mechanical instability detection, and time mode additional pulses
 - **LoadCell (HX711)**: Multi-mode precision weight measurement (instant, smoothed, filtered), calibration flag, noise diagnostics
 - **DiagnosticsController**: System health monitoring (calibration status, sustained noise, mechanical instability), state persistence, hysteresis, priority-based warnings
-- **UIManager**: 7 screens with LVGL integration; menu page surfaces quick Tools (Scale view, Calibrate, Tune Pulses, Motor Test, Jolly animation preview) followed by Settings (Bluetooth, Display, Grind Settings) and Info sections (Diagnostics, System Info, Logs & Data, Lifetime Stats), warning icon indicator, split-button layout for time mode pulses
+- **UIManager**: 7 screens with LVGL integration; menu page surfaces quick Tools (Scale view, Calibrate, Tune Pulses, Motor Test, Jolly animation preview, Simulation mode) followed by Settings (Bluetooth, Display, Grind Settings) and Info sections (Diagnostics, System Info, Logs & Data, Lifetime Stats), warning icon indicator, split-button layout for time mode pulses
 - **StateMachine**: Central state coordination (READY → GRINDING → GRIND_COMPLETE)
 
 **Update Intervals:** 20ms grind control, 25ms load cell (active), 50ms UI/hardware
@@ -55,6 +55,10 @@ python3 tools/grinder.py analyze
 - **Purge popup**: "Keep purge grinds from now on" checkbox switches mode from Purge → Prime in preferences
 - **Logging disabled** during PURGE_CONFIRM phase to avoid capturing data while paused
 - **Preferences**: `chute_mode` (int: 0=Prime, 1=Purge, default=1), `chute_amount_g` (float: 0.1-5.0, default=1.0)
+
+**Simulation Mode:** Menu → Tools → Simulation (NVS `simulation/enabled`, read once at boot by `SimulationMode::load()` in `src/system/simulation_mode.*`; changing it restarts the device). When active, `MockHX711Driver` replaces the HX711 (weight rises at `DEBUG_MOCK_FLOW_RATE_GPS` = 2.0 g/s while the motor is "on", with start delay/ramp/coast), the motor relay is never initialized or driven, calibration is fixed and not saved, and the background uses `THEME_COLOR_BACKGROUND_MOCK`. Check `SimulationMode::enabled()` instead of `DEBUG_ENABLE_LOADCELL_MOCK`; the `-mock` build env forces it on.
+
+**Grinding Overlay:** While in `UIState::GRINDING`, `GrindJollyOverlay` (top layer) shows only the straining Jolly at full width; tapping it stops the grind. It hides on any other state, so completion/timeout show the normal grinding screen with the happy Jolly.
 
 **Time Mode Pulses:** Split-button completion screen (OK + PULSE), `TIME_ADDITIONAL_PULSE` phase, 100ms duration
 

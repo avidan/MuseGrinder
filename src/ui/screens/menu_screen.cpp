@@ -1,4 +1,5 @@
 #include "menu_screen.h"
+#include "../../system/simulation_mode.h"
 #include <Arduino.h>
 #include <algorithm>
 #include <LittleFS.h>
@@ -151,6 +152,9 @@ void MenuScreen::create_menu_ui() {
     jolly_page = lv_menu_page_create(menu, "Jolly");
     create_jolly_page(jolly_page);
 
+    simulation_page = lv_menu_page_create(menu, "Simulation");
+    create_simulation_page(simulation_page);
+
     // Create menu items grouped with separators
     create_separator(main_page, "Tools");
     scale_item = create_menu_item(main_page, "Scale");
@@ -159,6 +163,8 @@ void MenuScreen::create_menu_ui() {
     motor_test_button = create_menu_item(main_page, "Motor Test");
     lv_obj_t* jolly_item = create_menu_item(main_page, "Jolly");
     lv_menu_set_load_page_event(menu, jolly_item, jolly_page);
+    lv_obj_t* simulation_item = create_menu_item(main_page, "Simulation");
+    lv_menu_set_load_page_event(menu, simulation_item, simulation_page);
 
     lv_menu_set_load_page_event(menu, scale_item, scale_page);
 
@@ -540,6 +546,46 @@ void MenuScreen::jolly_preview_tapped_cb(lv_event_t* e) {
 void MenuScreen::jolly_strain_toggled_cb(lv_event_t* e) {
     auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
     self->jolly_preview.setStraining(lv_obj_has_state(self->jolly_strain_toggle, LV_STATE_CHECKED));
+}
+
+void MenuScreen::create_simulation_page(lv_obj_t* parent) {
+    lv_obj_set_layout(parent, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scroll_dir(parent, LV_DIR_VER);
+
+    create_description_label(parent,
+        SimulationMode::enabled()
+            ? "Simulation is ON. The motor is disabled and weight is simulated at 2 g/s while grinding."
+            : "Test without a motor or load cell. The motor stays off and weight rises at 2 g/s while grinding.");
+
+    create_toggle_row(parent, "Simulation", &simulation_toggle);
+    if (SimulationMode::saved()) {
+        lv_obj_add_state(simulation_toggle, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(simulation_toggle, simulation_toggled_cb, LV_EVENT_VALUE_CHANGED, this);
+
+    simulation_apply_button = create_button(parent, "Restart to apply", lv_color_hex(THEME_COLOR_WARNING));
+    lv_obj_add_event_cb(simulation_apply_button, simulation_apply_cb, LV_EVENT_CLICKED, this);
+    // Only offered when the switch differs from how this boot is running.
+    if (SimulationMode::saved() == SimulationMode::enabled()) {
+        lv_obj_add_flag(simulation_apply_button, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void MenuScreen::simulation_toggled_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    const bool want = lv_obj_has_state(self->simulation_toggle, LV_STATE_CHECKED);
+    if (want == SimulationMode::enabled()) {
+        lv_obj_add_flag(self->simulation_apply_button, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(self->simulation_apply_button, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void MenuScreen::simulation_apply_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    SimulationMode::save_and_restart(lv_obj_has_state(self->simulation_toggle, LV_STATE_CHECKED));
 }
 
 void MenuScreen::create_data_page(lv_obj_t* parent) {

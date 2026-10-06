@@ -8,6 +8,7 @@
 #include "screens/ready_screen.h"
 #include "screens/edit_screen.h"
 #include "screens/grinding_screen.h"
+#include "screens/grind_jolly_overlay.h"
 #include "screens/menu_screen.h"
 #include "screens/calibration_screen.h"
 #include "screens/confirm_screen.h"
@@ -104,6 +105,7 @@ public:
     ReadyScreen ready_screen;
     EditScreen edit_screen;
     GrindingScreen grinding_screen;
+    GrindJollyOverlay grind_jolly_overlay;
     MenuScreen menu_screen;
     CalibrationScreen calibration_screen;
     ConfirmScreen confirm_screen;

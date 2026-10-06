@@ -19,6 +19,9 @@ private:
     lv_obj_t* grind_mode_page;
     lv_obj_t* data_page;
     lv_obj_t* jolly_page;
+    lv_obj_t* simulation_page;
+    lv_obj_t* simulation_toggle;
+    lv_obj_t* simulation_apply_button;
     lv_obj_t* jolly_strain_toggle;
     MuseMascot jolly_preview;
     lv_obj_t* stats_page;
@@ -163,6 +166,9 @@ private:
     void create_scale_page(lv_obj_t* parent);
     void create_data_page(lv_obj_t* parent);
     void create_jolly_page(lv_obj_t* parent);
+    void create_simulation_page(lv_obj_t* parent);
+    static void simulation_toggled_cb(lv_event_t* e);
+    static void simulation_apply_cb(lv_event_t* e);
     static void jolly_preview_tapped_cb(lv_event_t* e);
     static void jolly_strain_toggled_cb(lv_event_t* e);
     void create_stats_page(lv_obj_t* parent);
