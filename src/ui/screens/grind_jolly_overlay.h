@@ -15,6 +15,9 @@ public:
     void show_straining();
     void show_dancing();
     void hide();
+    // Straining animates only while the motor actually runs; it freezes on
+    // pause, settling and between pulses.
+    void set_motor_running(bool running) { straining.setFrozen(!running); }
 
 private:
     static void tapped_cb(lv_event_t* e);

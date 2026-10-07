@@ -89,7 +89,7 @@ void MuseMascot::timer_cb(lv_timer_t* t) {
 }
 
 void MuseMascot::tick() {
-    if (!img || !lv_obj_is_visible(img)) return;
+    if (frozen || !img || !lv_obj_is_visible(img)) return;
     const uint32_t now = lv_tick_get();
     show_frame(straining ? jolly_get_strain_frame(now / JOLLY_STRAIN_FRAME_MS)
                          : jolly_get_frame(now / JOLLY_FRAME_MS));

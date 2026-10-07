@@ -152,6 +152,12 @@ void UIManager::update() {
         screen_timeout_controller_->update();
     }
 
+    // Jolly strains only while the motor is actually running.
+    if (hardware_manager && hardware_manager->get_grinder() &&
+        state_machine && state_machine->is_state(UIState::GRINDING)) {
+        grind_jolly_overlay.set_motor_running(hardware_manager->get_grinder()->is_grinding());
+    }
+
     // Next dose set remotely (Muse POST /dose): apply to the selected profile.
     float next_dose_g;
     if (profile_controller && museTakePendingDose(&next_dose_g)) {

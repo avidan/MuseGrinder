@@ -24,6 +24,8 @@ public:
     // true while the grinder motor is running.
     void setStraining(bool straining);
     bool isStraining() const { return straining; }
+    // Hold the current frame (e.g. while the motor is stopped).
+    void setFrozen(bool frozen_) { frozen = frozen_; }
     lv_obj_t* get_root() const { return root; }
 
 private:
@@ -35,6 +37,7 @@ private:
     lv_obj_t* img = nullptr;
     uint16_t scale = 256;
     bool straining = false;
+    bool frozen = false;
     const lv_image_dsc_t* shown_frame = nullptr;
     uint16_t* scaled_pixels = nullptr;  // PSRAM, only when scale != 256
     lv_image_dsc_t scaled_dsc = {};

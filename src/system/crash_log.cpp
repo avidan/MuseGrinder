@@ -20,10 +20,22 @@ struct RingBuffer {
     char data[kRingSize];
 };
 
+// What the panic handler saw (the ring can't log the crash itself).
+constexpr uint32_t kPanicMagic = 0x50414E43;  // "PANC"
+constexpr int kBacktraceDepth = 10;
+struct PanicRecord {
+    uint32_t magic;
+    int32_t core;
+    char reason[48];
+    uint32_t pc;
+    uint32_t backtrace[kBacktraceDepth];
+};
+
 // RTC memory that the bootloader leaves alone across resets.
 RTC_NOINIT_ATTR RingBuffer s_ring;
+RTC_NOINIT_ATTR PanicRecord s_panic;
 
-char s_previous[kRingSize + 1];
+char s_previous[kRingSize + 512];
 esp_reset_reason_t s_reason = ESP_RST_UNKNOWN;
 portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 vprintf_like_t s_idf_vprintf = nullptr;
@@ -35,6 +47,19 @@ void append_locked(const char* text, size_t len) {
         s_ring.head = (s_ring.head + 1) % kRingSize;
         if (s_ring.head == 0) s_ring.wrapped = 1;
     }
+}
+
+// Called by the Arduino core's panic wrapper with a decoded backtrace, before
+// ESP-IDF prints the crash and resets. Record it for the next boot.
+void on_panic(arduino_panic_info_t* info, void*) {
+    memset(&s_panic, 0, sizeof(s_panic));
+    s_panic.core = info->core;
+    if (info->reason) strncpy(s_panic.reason, info->reason, sizeof(s_panic.reason) - 1);
+    s_panic.pc = reinterpret_cast<uint32_t>(info->pc);
+    for (int i = 0; i < kBacktraceDepth && i < info->backtrace_len; i++) {
+        s_panic.backtrace[i] = info->backtrace[i];
+    }
+    s_panic.magic = kPanicMagic;
 }
 
 // ESP-IDF logs (ESP_LOGx) go through here too.
@@ -57,8 +82,8 @@ void init() {
     s_previous[0] = '\0';
 
     // RTC memory is undefined after power-on; trust it only with the magic.
-    const bool valid = s_reason != ESP_RST_POWERON && s_reason != ESP_RST_BROWNOUT &&
-                       s_ring.magic == kMagic && s_ring.head < kRingSize;
+    const bool warm = s_reason != ESP_RST_POWERON && s_reason != ESP_RST_BROWNOUT;
+    const bool valid = warm && s_ring.magic == kMagic && s_ring.head < kRingSize;
     if (valid) {
         size_t len = 0;
         if (s_ring.wrapped) {
@@ -71,12 +96,28 @@ void init() {
         s_previous[len] = '\0';
     }
 
+    // Append what the panic handler recorded, for addr2line against firmware.elf.
+    if (warm && s_panic.magic == kPanicMagic) {
+        size_t len = strlen(s_previous);
+        s_panic.reason[sizeof(s_panic.reason) - 1] = '\0';
+        len += snprintf(s_previous + len, sizeof(s_previous) - len,
+                        "\n*** PANIC on core %ld: %s\n    PC 0x%08lx\n    Backtrace:",
+                        (long)s_panic.core, s_panic.reason, (unsigned long)s_panic.pc);
+        for (int i = 0; i < kBacktraceDepth && s_panic.backtrace[i] && len < sizeof(s_previous); i++) {
+            len += snprintf(s_previous + len, sizeof(s_previous) - len, " 0x%08lx",
+                            (unsigned long)s_panic.backtrace[i]);
+        }
+        if (len < sizeof(s_previous)) snprintf(s_previous + len, sizeof(s_previous) - len, "\n");
+    }
+    s_panic.magic = 0;
+
     s_ring.magic = kMagic;
     s_ring.head = 0;
     s_ring.wrapped = 0;
     s_ready = true;
 
     s_idf_vprintf = esp_log_set_vprintf(idf_vprintf_hook);
+    set_arduino_panic_handler(on_panic, nullptr);
 }
 
 void append(const char* text, size_t len) {
@@ -150,3 +191,4 @@ size_t copy_current_log(char* out, size_t capacity) {
 }
 
 }  // namespace CrashLog
+
