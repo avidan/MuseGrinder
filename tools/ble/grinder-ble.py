@@ -1079,6 +1079,7 @@ class GrinderBLETool:
         self.safe_print(f"   Build:        #{system.get('build', 'Unknown')}")
         self.safe_print(f"   Uptime:       {system.get('uptime_h', 0):02d}:{system.get('uptime_m', 0):02d}:{system.get('uptime_s', 0):02d}")
         self.safe_print(f"   CPU Freq:     {system.get('cpu_freq', 'Unknown')} MHz")
+        self.safe_print(f"   Last reset:   {system.get('reset_reason', 'Unknown (older firmware)')}")
         
         # Memory Information  
         self.safe_print(f"[MEMORY]:")

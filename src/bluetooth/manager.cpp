@@ -679,6 +679,7 @@ void BluetoothManager::log(const char* format, ...) {
 
     // Note: This is the log method itself, so we print to Serial directly
     Serial.print(buffer);
+    CrashLog::append(buffer, strlen(buffer));
 
     // is_debug_stream_active() is the same as debug_stream_active
     if (debug_stream_active) {
@@ -1143,7 +1144,8 @@ void BluetoothManager::update_system_info() {
         "\"heap_total\":%u,"
         "\"heap_used_pct\":%.1f,"
         "\"flash_size\":%u,"
-        "\"cpu_freq\":%u"
+        "\"cpu_freq\":%u,"
+        "\"reset_reason\":\"%s\""
         "}",
         BUILD_FIRMWARE_VERSION,
         BUILD_NUMBER,
@@ -1154,7 +1156,8 @@ void BluetoothManager::update_system_info() {
         (unsigned int)heap_total,
         heap_usage_percent,
         (unsigned int)flash_size,
-        (unsigned int)ESP.getCpuFreqMHz()
+        (unsigned int)ESP.getCpuFreqMHz(),
+        CrashLog::reset_reason()
     );
     
     sysinfo_system_characteristic->setValue(buffer);
@@ -1389,6 +1392,26 @@ void BluetoothManager::generate_diagnostic_report() {
         driver_type
     );
     send_chunk(buf);
+
+    // Section 2b: why the last reset happened, and what was logged before it
+    snprintf(buf, sizeof(buf), "[LAST RESET]\n  Reason: %s\n", CrashLog::reset_reason());
+    send_chunk(buf);
+    if (CrashLog::previous_log()[0]) {
+        send_chunk("  Log before reset (oldest first):\n----------------\n");
+        send_chunk(CrashLog::previous_log());
+        send_chunk("\n----------------\n\n");
+    } else {
+        send_chunk("  No log kept (power-on boot, or nothing logged before the reset)\n\n");
+    }
+
+    // This boot's recent log (e.g. a failed OTA that dropped the link without a reset)
+    {
+        static char recent[2049];  // static: not on the BLE task stack
+        CrashLog::copy_current_log(recent, sizeof(recent));
+        send_chunk("[RECENT LOG] (this boot, oldest first)\n----------------\n");
+        send_chunk(recent);
+        send_chunk("\n----------------\n\n");
+    }
 
     // Section 3: Runtime Diagnostics
     WeightSensor* weight_sensor = hardware_manager.get_weight_sensor();
