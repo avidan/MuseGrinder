@@ -23,6 +23,42 @@
 extern HardwareManager hardware_manager;
 extern GrindController grind_controller;
 
+// The BLE controller is pinned to core 0. Starting or stopping it from core 1
+// makes ESP-IDF allocate/free its interrupts through the core-0 IPC task, whose
+// stack is only 1KB (prebuilt sdkconfig). With heap poisoning, an interrupt
+// landing mid-malloc overflowed that stack and tripped the end-of-stack
+// watchpoint ("Unhandled debug exception" in esp_intr_alloc). Run controller
+// init/deinit in a short-lived core-0 task with a real stack instead.
+static void run_on_ble_core(void (*fn)(void*), void* arg) {
+    if (xPortGetCoreID() == CONFIG_BT_CTRL_PINNED_TO_CORE) {
+        fn(arg);
+        return;
+    }
+    struct Job {
+        void (*fn)(void*);
+        void* arg;
+        SemaphoreHandle_t done;
+    } job = {fn, arg, xSemaphoreCreateBinary()};
+    if (!job.done) {
+        fn(arg);  // out of memory for the semaphore: fall back to direct call
+        return;
+    }
+    auto trampoline = [](void* p) {
+        auto* j = static_cast<Job*>(p);
+        j->fn(j->arg);
+        xSemaphoreGive(j->done);
+        vTaskDelete(nullptr);
+    };
+    if (xTaskCreatePinnedToCore(trampoline, "ble_ctrl", 8192, &job, uxTaskPriorityGet(nullptr),
+                                nullptr, CONFIG_BT_CTRL_PINNED_TO_CORE) != pdPASS) {
+        vSemaphoreDelete(job.done);
+        fn(arg);
+        return;
+    }
+    xSemaphoreTake(job.done, portMAX_DELAY);
+    vSemaphoreDelete(job.done);
+}
+
 // Flash writes stall the cache on both cores; keep them out of active grinds
 // so weight sampling and motor-stop timing are not disturbed.
 static bool grind_in_progress() {
@@ -130,7 +166,7 @@ void BluetoothManager::enable(unsigned long timeout_ms) {
     last_disconnect_time = enable_time; // Start disconnected timeout from enable time
     
     // Initialize BLE with delays for power stability
-    BLEDevice::init(BLE_DEVICE_NAME);
+    run_on_ble_core([](void*) { BLEDevice::init(BLE_DEVICE_NAME); }, nullptr);
     
     // Request a larger MTU to improve throughput when the client supports it.
     // Some platforms (e.g., macOS/iOS) may ignore this request and keep a lower MTU.
@@ -336,7 +372,7 @@ void BluetoothManager::disable() {
     }
 
     log("Bluetooth: Deinitializing BLE stack...\n");
-    BLEDevice::deinit(false);
+    run_on_ble_core([](void*) { BLEDevice::deinit(false); }, nullptr);
     delay(BLE_SHUTDOWN_DEINIT_DELAY_MS);
     ble_server = nullptr;
     ota_service = nullptr;
