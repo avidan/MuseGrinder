@@ -29,6 +29,7 @@ target_include_directories(lvgl PUBLIC "${PROJECT_ROOT}/include")
 add_executable(smart-grind-sim
     main.cpp
     grind_mode_format.cpp
+    muse_mascot_sim.cpp
     "${PROJECT_ROOT}/src/ui/ui_helpers.cpp"
     "${PROJECT_ROOT}/src/ui/screens/ready_screen.cpp"
     "${PROJECT_ROOT}/src/ui/screens/grinding_screen_arc.cpp"
