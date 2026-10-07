@@ -17,10 +17,12 @@ if ($cmakeCommand) {
 }
 
 if (-not $cmake) {
-    throw 'CMake was not found. Install the Visual Studio 2022 Desktop development with C++ workload.'
+    throw 'CMake was not found. Install Visual Studio (2022 or newer) with the Desktop development with C++ workload.'
 }
 
-& $cmake -S $PSScriptRoot -B $buildDirectory -G 'Visual Studio 17 2022' -A x64
+# No -G: CMake picks the newest installed Visual Studio (2022 locally,
+# whatever the windows-latest CI image ships).
+& $cmake -S $PSScriptRoot -B $buildDirectory -A x64
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & $cmake --build $buildDirectory --config Release --target smart-grind-sim --parallel
