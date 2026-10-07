@@ -7,10 +7,15 @@ extern BluetoothManager g_bluetooth_manager;
 // Temporary fallback logging - use Serial instead of BLE to avoid circular dependencies
 #include <Arduino.h>
 
+#ifdef SMART_GRIND_SIM
+// Desktop simulator: no RTC memory, plain Serial shim.
+#define LOG_BLE(format, ...) Serial.printf(format, ##__VA_ARGS__)
+#else
 #include "../system/crash_log.h"
 
 // Serial, plus the crash-surviving RTC log (see system/crash_log.h).
 #define LOG_BLE(format, ...) CrashLog::log_printf(format, ##__VA_ARGS__)
+#endif
 
 // Replace DEBUG macros to use Serial logging
 #if DEBUG_SERIAL_OUTPUT

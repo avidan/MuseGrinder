@@ -14,7 +14,11 @@ namespace CrashLog {
 void init();
 
 // printf to Serial and the ring buffer (what LOG_BLE expands to).
+#if defined(__GNUC__)
 void log_printf(const char* format, ...) __attribute__((format(printf, 1, 2)));
+#else
+void log_printf(const char* format, ...);
+#endif
 
 // Mirror already-printed text into the ring buffer.
 void append(const char* text, size_t len);
