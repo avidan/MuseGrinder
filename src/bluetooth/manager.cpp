@@ -365,6 +365,11 @@ void BluetoothManager::disable() {
 
 void BluetoothManager::handle() {
     if (!ble_enabled) return;
+
+    // Background patch-partition erase after an OTA START (one chunk per pass).
+    if (ota_handler.service_preparation()) {
+        set_ota_status(ota_handler.get_status());
+    }
     
     // Only check timeout when no client is connected
     if (!device_connected) {
@@ -740,7 +745,7 @@ void BluetoothManager::handle_ota_control_command(BLECharacteristic* characteris
                 }
                 
                 if (ota_handler.start_ota(patch_size, expected_build, is_full_update, expected_firmware_version)) {
-                    set_ota_status(BLE_OTA_RECEIVING);
+                    set_ota_status(ota_handler.get_status());  // READY: erasing; RECEIVING follows
                 } else {
                     set_ota_status(BLE_OTA_ERROR);
                 }

@@ -328,6 +328,8 @@ class GrinderBLETool:
         while time.time() - start_time < timeout:
             if self.current_ota_status == expected_status:
                 return True
+            if self.current_ota_status == BLE_OTA_ERROR:
+                return False
         
             self.status_updated.clear()
             try:
@@ -484,9 +486,15 @@ class GrinderBLETool:
             start_data += struct.pack('<B', 0)
             
         self.safe_print(f"[INFO] Sending {'full' if is_full_update else 'delta'} update flag")
+        self.current_ota_status = BLE_OTA_IDLE  # ignore any stale status from before START
         await self.client.write_gatt_char(BLE_OTA_CONTROL_CHAR_UUID, bytes([BLE_OTA_CMD_START]) + start_data)
         
-        if not await self.wait_for_ota_status(BLE_OTA_RECEIVING, timeout=15): return False
+        # Newer firmware replies READY at once and erases the patch partition in
+        # the background before switching to RECEIVING; a full image can take a
+        # while. Older firmware erases first and goes straight to RECEIVING.
+        if not await self.wait_for_ota_status(BLE_OTA_RECEIVING, timeout=90):
+            self.safe_print("[ERROR] Device did not become ready to receive the update")
+            return False
         
         start_time = time.time()
         try:

@@ -67,6 +67,7 @@ static BoardMarkerResult check_board_marker(const esp_partition_t* part, char* f
 
 OTAHandler::OTAHandler() 
     : ota_in_progress(false)
+    , preparing(false)
     , patch_size(0)
     , received_size(0)
     , current_status(BLE_OTA_IDLE)
@@ -159,7 +160,7 @@ bool OTAHandler::start_ota(uint32_t size, const String& expected_build_number, b
     LOG_OTA_DEBUG("start_ota() called - size=%lu, build=%s, full=%d\n", 
                   (unsigned long)size, expected_build_number.c_str(), is_full_update);
     
-    if (ota_in_progress) {
+    if (ota_in_progress || preparing) {
         LOG_BLE("OTA: Update already in progress\n");
         LOG_OTA_DEBUG("start_ota() FAILED - already in progress\n");
         return false;
@@ -204,21 +205,42 @@ bool OTAHandler::start_ota(uint32_t size, const String& expected_build_number, b
     LOG_BLE("OTA: Suspending hardware tasks...\n");
     task_manager.suspend_hardware_tasks();
 
-    LOG_OTA_DEBUG("Calling start_update()...\n");
-    if (!start_update()) {
+    // Erasing a full image's worth of patch partition takes seconds. Doing it
+    // here, inside the BLE write callback, stalled the BLE stack long enough
+    // to drop the connection and reset the board. Reply now (READY = preparing)
+    // and erase incrementally from the Bluetooth task via service_preparation().
+    if (delta_partition_begin(&patch_writer, "patch", patch_size) != ESP_OK) {
         current_status = BLE_OTA_ERROR;
-        LOG_OTA_DEBUG("start_update() FAILED\n");
-        
-        // Resume hardware tasks on failure
+        LOG_BLE("OTA: Failed to initialize patch partition\n");
         LOG_BLE("OTA: Resuming hardware tasks after failed start\n");
         task_manager.resume_hardware_tasks();
         return false;
     }
-    LOG_OTA_DEBUG("start_update() SUCCESS\n");
-    
+
+    preparing = true;
+    current_status = BLE_OTA_READY;
+    LOG_BLE("OTA: Erasing %lu KB of patch partition in the background...\n",
+            (unsigned long)patch_writer.erase_size / 1024);
+    return true;
+}
+
+bool OTAHandler::service_preparation() {
+    if (!preparing) return false;
+
+    const int step = delta_partition_erase_step(&patch_writer, 64 * 1024);
+    if (step == 0) return false;  // more to erase on the next pass
+
+    preparing = false;
+    if (step < 0) {
+        LOG_BLE("OTA: Patch partition erase failed\n");
+        current_status = BLE_OTA_ERROR;
+        task_manager.resume_hardware_tasks();
+        return true;
+    }
+
     ota_in_progress = true;
     current_status = BLE_OTA_RECEIVING;
-    LOG_OTA_DEBUG("OTA started successfully - status=BLE_OTA_RECEIVING\n");
+    LOG_BLE("OTA: Patch partition ready - receiving\n");
     return true;
 }
 
@@ -321,9 +343,10 @@ bool OTAHandler::complete_ota() {
 }
 
 void OTAHandler::abort_ota() {
-    if (ota_in_progress) {
+    if (ota_in_progress || preparing) {
         LOG_BLE("OTA: Aborting update\n");
         ota_in_progress = false;
+        preparing = false;
         received_size = 0;
         patch_size = 0;
         current_status = BLE_OTA_ERROR;
@@ -337,15 +360,6 @@ void OTAHandler::abort_ota() {
 float OTAHandler::get_progress() const {
     if (patch_size == 0) return 0.0f;
     return 100.0f * received_size / patch_size;
-}
-
-bool OTAHandler::start_update() {
-    // Initialize patch partition for writing
-    if (delta_partition_init(&patch_writer, "patch", patch_size) != ESP_OK) {
-        LOG_BLE("OTA: Failed to initialize patch partition\n");
-        return false;
-    }
-    return true;
 }
 
 bool OTAHandler::finalize_update() {
