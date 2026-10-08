@@ -60,20 +60,24 @@ def upload(ip, firmware, password):
     conn.endheaders()
 
     conn.send(head)
-    sent, start = 0, time.time()
+    sent, start, next_step = 0, time.time(), 10
     with open(firmware, "rb") as f:
         while chunk := f.read(CHUNK):
             conn.send(chunk)
             sent += len(chunk)
             pct = 100 * sent // size
-            rate = sent / 1024 / max(time.time() - start, 0.001)
-            print(f"\r[UPLOAD] {pct:3d}%  {sent // 1024} / {size // 1024} KB  ({rate:.0f} KB/s)",
-                  end="", flush=True)
+            # One line per 10%: plain lines read cleanly in any terminal. No
+            # per-line rate - early chunks only fill socket buffers.
+            if pct >= next_step:
+                print(f"[UPLOAD] {pct:3d}%  {sent // 1024:5d} / {size // 1024} KB  "
+                      f"{time.time() - start:4.0f}s", flush=True)
+                next_step = pct // 10 * 10 + 10
     conn.send(tail)
-    print()
-    response = conn.getresponse()
+    response = conn.getresponse()  # returns once the grinder has written and checked the image
     body = response.read().decode(errors="replace")
     conn.close()
+    elapsed = time.time() - start
+    print(f"[UPLOAD] Sent {size // 1024} KB in {elapsed:.0f}s ({size / 1024 / elapsed:.0f} KB/s)")
     return response.status, body
 
 
