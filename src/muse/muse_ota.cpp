@@ -54,6 +54,11 @@ void handle_upload() {
 
     switch (upload.status) {
         case UPLOAD_FILE_START:
+            if (s_writing) {  // a previous upload stalled mid-transfer
+                esp_ota_abort(s_handle);
+                s_writing = false;
+                LOG_BLE("[OTA-WIFI] Discarded an unfinished upload\n");
+            }
             s_success = false;
             s_written = 0;
             s_error_code = 0;

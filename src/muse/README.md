@@ -42,6 +42,12 @@ closes once the grinder joins. Thereafter: `http://musegrinder.local`.
 
 ## Notes
 
+- WiFi transmits at 8.5dBm (not the ~19.5dBm default), and while a grind
+  runs the HTTP server pauses and TX drops to 2dBm. The grinder's 5V supply
+  also feeds the motor relay, and full-power WiFi spikes browned the board
+  out when the motor started. Requests made mid-grind time out; poll again
+  after it finishes (`/last` is recorded at completion regardless).
+
 - `grinding` is false once a grind reaches COMPLETED/TIMEOUT, even before
   the result screen is dismissed. `/last` is captured at that moment, with
   the cup still on the scale. Stopped (cancelled) grinds don't update `/last`.

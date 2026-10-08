@@ -46,6 +46,17 @@ static bool s_everConnected = false;
 static unsigned long s_wifiStartMs = 0;
 
 static const char* MUSE_AP_SSID = "MuseGrinder-Setup";
+
+// The grinder's 5V supply also feeds the motor relay. Full-power WiFi TX
+// (~19.5dBm) adds current spikes that brown the board out when the motor
+// starts, so transmit at reduced power, and at the minimum during a grind.
+static const wifi_power_t MUSE_TX_POWER = WIFI_POWER_8_5dBm;
+static const wifi_power_t MUSE_TX_POWER_GRINDING = WIFI_POWER_2dBm;
+static bool s_radioQuiet = false;  // grind active: no HTTP, minimum TX power
+
+static void museApplyTxPower() {
+    WiFi.setTxPower(s_radioQuiet ? MUSE_TX_POWER_GRINDING : MUSE_TX_POWER);
+}
 static const unsigned long MUSE_AP_FALLBACK_MS = 20000;
 static GrindController* s_gc = nullptr;
 static WeightSensor* s_ws = nullptr;
@@ -241,6 +252,7 @@ static void museStartSetupAp() {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(MUSE_AP_SSID);
     museDns.start(53, "*", WiFi.softAPIP());
+    museApplyTxPower();  // mode changes reset it
     s_apActive = true;
     LOG_BLE("[MUSE] No WiFi after %lus - setup AP \"%s\" at %s\n",
             MUSE_AP_FALLBACK_MS / 1000, MUSE_AP_SSID, WiFi.softAPIP().toString().c_str());
@@ -250,6 +262,7 @@ static void museStopSetupAp() {
     museDns.stop();
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
+    museApplyTxPower();
     s_apActive = false;
 }
 
@@ -261,6 +274,7 @@ void museWifiSetup(GrindController* gc, WeightSensor* ws, ProfileController* pc)
     WiFi.mode(WIFI_STA);
     WiFi.setHostname("musegrinder");
     WiFi.begin(); // saved credentials, if any; connects in the background
+    museApplyTxPower();
     s_wifiStartMs = millis();
 
     museServer.on("/", HTTP_GET, museHandleSetupPage);
@@ -300,7 +314,17 @@ void museWifiLoop() {
     }
     if (s_apActive) museDns.processNextRequest();
 
-    museServer.handleClient();
+    // Keep the radio quiet while a grind runs (see MUSE_TX_POWER): requests
+    // wait until it finishes. The association stays up, so nothing reconnects.
+    const bool quiet = museIsGrinding();
+    if (quiet != s_radioQuiet) {
+        s_radioQuiet = quiet;
+        museApplyTxPower();
+        LOG_BLE("[MUSE] WiFi %s\n", quiet ? "quiet for grind (2dBm, HTTP paused)" : "resumed (8.5dBm)");
+    }
+    if (!s_radioQuiet) {
+        museServer.handleClient();
+    }
 
     // Capture the last-grind summary when the grind finishes (settled weight,
     // cup still on the scale) rather than when the screen is dismissed.

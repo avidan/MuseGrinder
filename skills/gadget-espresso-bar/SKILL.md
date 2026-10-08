@@ -42,7 +42,7 @@ Read and follow the Home Link networking and safety rules in `~/docs/devices/hom
   `200 {"target_g":18.5,"started":true}` · `400` missing body or out of range · `409` grind already active · `503` grinder refused (load cell fault or not calibrated).
 - `POST /dose` body `{"g": 18.5}` → sets the next dose on the selected profile **without grinding**, 5–100 g, one decimal. Saved on the grinder; the user grinds it with the button (or "Start on Cup").
   `200 {"next_dose_g":18.5,"profile":"DOUBLE","started":false}` · `400` missing body or out of range · `409` grind active.
-- `POST /stop` → `200 {"stopped":true}` · `409` no grind active.
+- `POST /stop` → `200 {"stopped":true}` · `409` no grind active. Not reachable while a grind runs (HTTP is paused then); stopping mid-grind is a tap on the grinder's screen.
 - `GET /last` → `{"valid":bool,"final_weight_g":float,"target_g":float,"result":"..."}`
 
 When `simulated` is true the board is in simulation mode: the motor never runs and weights are synthetic. Say so in every report.
@@ -61,7 +61,7 @@ When `simulated` is true the board is in simulation mode: the motor never runs a
 
 1. `GET` grinder `/status`. Proceed only if `grinding` is false.
 2. `POST /target` with the requested dose.
-3. Poll `GET /status` about every 2 s until `grinding` is false. A grind normally takes 5–15 s; stop polling after 60 s and report a timeout.
+3. Poll `GET /status` about every 2 s until it answers with `grinding` false. **While a grind runs the grinder pauses its HTTP server** (keeps its radio quiet so the motor doesn't brown out the supply), so requests time out mid-grind — treat timeouts as "still grinding". A grind normally takes 5–15 s; stop polling after 60 s and report a timeout.
 4. `GET /last` and report `final_weight_g` against the target and the `result`.
 
 ### Set the next dose (no grind)
