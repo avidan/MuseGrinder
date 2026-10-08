@@ -35,6 +35,7 @@
 #include "system/board_id.h"
 #include "system/crash_log.h"
 #include "muse_ota.h"
+#include "controllers/portafilter_detector.h"
 
 #include <atomic>
 
@@ -52,10 +53,19 @@ static const char* MUSE_AP_SSID = "MuseGrinder-Setup";
 // starts, so transmit at reduced power, and at the minimum during a grind.
 static const wifi_power_t MUSE_TX_POWER = WIFI_POWER_8_5dBm;
 static const wifi_power_t MUSE_TX_POWER_GRINDING = WIFI_POWER_2dBm;
-static bool s_radioQuiet = false;  // grind active: no HTTP, minimum TX power
+static const wifi_power_t MUSE_TX_POWER_UPLOAD = WIFI_POWER_19_5dBm;  // motor idle during uploads
+static bool s_radioQuiet = false;   // grind active: no HTTP, minimum TX power
+static bool s_uploadActive = false; // firmware upload: full TX power
 
 static void museApplyTxPower() {
-    WiFi.setTxPower(s_radioQuiet ? MUSE_TX_POWER_GRINDING : MUSE_TX_POWER);
+    WiFi.setTxPower(s_radioQuiet ? MUSE_TX_POWER_GRINDING
+                    : s_uploadActive ? MUSE_TX_POWER_UPLOAD
+                    : MUSE_TX_POWER);
+}
+
+void museWifiSetUploadActive(bool active) {
+    s_uploadActive = active;
+    museApplyTxPower();
 }
 static const unsigned long MUSE_AP_FALLBACK_MS = 20000;
 static GrindController* s_gc = nullptr;
@@ -129,7 +139,7 @@ static void museHandleStatus() {
         "{\"grinding\":%s,\"weight_g\":%.2f,\"target_g\":%.1f,"
         "\"next_dose_g\":%.1f,\"profile\":\"%s\","
         "\"mode\":\"weight\",\"last_result\":\"%s\","
-        "\"simulated\":%s,\"build\":%d,\"board\":\"%s\",\"reset_reason\":\"%s\","
+        "\"simulated\":%s,\"portafilter\":\"%s\",\"build\":%d,\"board\":\"%s\",\"reset_reason\":\"%s\","
         "\"firmware\":\"musegrinder-muse/1.0\"}",
         museIsGrinding() ? "true" : "false",
         s_ws->get_display_weight(),
@@ -138,6 +148,7 @@ static void museHandleStatus() {
         s_pc->get_current_name(),
         museResultName(s_gc->get_last_session_result()),
         SimulationMode::enabled() ? "true" : "false",
+        PortafilterDetector::state_name(portafilter_detector.state()),
         BUILD_NUMBER, BoardId::id(), CrashLog::reset_reason());
     museServer.send(200, "application/json", buf);
 }
@@ -179,6 +190,13 @@ static void museHandleTarget() {
     }
     if (museIsGrinding()) {
         museServer.send(409, "application/json", "{\"error\":\"grind already active\"}");
+        return;
+    }
+    if (!portafilter_detector.ok_to_grind()) {
+        char err[96];
+        snprintf(err, sizeof(err), "{\"error\":\"no portafilter\",\"portafilter\":\"%s\"}",
+                 PortafilterDetector::state_name(portafilter_detector.state()));
+        museServer.send(409, "application/json", err);
         return;
     }
     // Dismiss a finished grind first, same as the screen tap / auto-return.

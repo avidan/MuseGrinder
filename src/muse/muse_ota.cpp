@@ -8,6 +8,7 @@
 #include "config/constants.h"
 #include "controllers/grind_controller.h"
 #include "system/board_id.h"
+#include "muse_wifi.h"
 
 #ifndef MUSE_OTA_PASSWORD
 #define MUSE_OTA_PASSWORD ""
@@ -31,6 +32,7 @@ void fail(int code, const char* message) {
         esp_ota_abort(s_handle);
         s_writing = false;
     }
+    museWifiSetUploadActive(false);
     if (s_error_code == 0) {  // keep the first error
         s_error_code = code;
         strncpy(s_error, message, sizeof(s_error) - 1);
@@ -87,6 +89,7 @@ void handle_upload() {
                 return;
             }
             s_writing = true;
+            museWifiSetUploadActive(true);
             LOG_BLE("[OTA-WIFI] Receiving %s into %s\n", upload.filename.c_str(), s_partition->label);
             break;
 
@@ -105,6 +108,7 @@ void handle_upload() {
         case UPLOAD_FILE_END: {
             if (!s_writing) return;
             s_writing = false;
+            museWifiSetUploadActive(false);
             if (esp_ota_end(s_handle) != ESP_OK) {  // validates the image
                 fail(400, "image failed validation");
                 return;

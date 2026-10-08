@@ -17,6 +17,7 @@
 #include "tasks/file_io_task.h"
 #include "muse/muse_wifi.h"
 #include "system/simulation_mode.h"
+#include "controllers/portafilter_detector.h"
 
 HardwareManager hardware_manager;
 StateMachine state_machine;
@@ -178,12 +179,14 @@ void setup() {
     file_io_task.init(task_manager.get_file_io_queue());
 
     // Muse gadget: WiFi + HTTP API for Muse (Home Link)
+    portafilter_detector.init(hardware_manager.get_load_cell());
     museWifiSetup(&grind_controller, hardware_manager.get_load_cell(), &profile_controller);
     
     LOG_BLE("✅ All task modules initialized\n");
 }
 
 void loop() {
+    portafilter_detector.update(); // before Muse: /target and /status read it
     museWifiLoop(); // Muse gadget HTTP API
 
 

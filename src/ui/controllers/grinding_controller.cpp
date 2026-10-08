@@ -1,5 +1,7 @@
 #include "grinding_controller.h"
 #include "../../system/simulation_mode.h"
+#include "../../controllers/portafilter_detector.h"
+#include "../components/blocking_overlay.h"
 
 #include <Arduino.h>
 #include <cstdio>
@@ -201,22 +203,16 @@ void GrindingUIController::handle_grind_button() {
             return;
         }
 
-        if (ui_manager_->grind_controller && ui_manager_->profile_controller) {
-            ui_manager_->grind_controller->set_grind_profile_id(ui_manager_->profile_controller->get_current_profile());
+        // Only grind into a seated portafilter. A hand brushing the button while
+        // lifting the portafilter can press it a moment before the weight moves,
+        // so confirm again shortly before starting.
+        if (!portafilter_detector.ok_to_grind()) {
+            show_grind_blocked(portafilter_detector.blocked_reason());
+            return;
         }
-
-        LOG_BLE("[%lums GRIND_START] About to call start_grind()\n", millis());
-        error_message_[0] = '\0';
-        error_grind_weight_ = 0.0f;
-        error_grind_progress_ = 0;
-
-        if (ui_manager_->profile_controller && ui_manager_->grind_controller) {
-            float target_weight = ui_manager_->profile_controller->get_current_weight();
-            float target_time_seconds = ui_manager_->profile_controller->get_current_time();
-            uint32_t target_time_ms = static_cast<uint32_t>((target_time_seconds * 1000.0f) + 0.5f);
-            ui_manager_->grind_controller->start_grind(target_weight, target_time_ms, ui_manager_->current_mode);
-        }
-        LOG_BLE("[%lums GRIND_START] start_grind() returned\n", millis());
+        if (confirm_start_timer_) return;  // already confirming
+        confirm_start_timer_ = lv_timer_create(confirm_start_timer_cb, 300, this);
+        lv_timer_set_repeat_count(confirm_start_timer_, 1);
     } else if (ui_manager_->state_machine->is_state(UIState::GRINDING)) {
         if (ui_manager_->grind_controller) {
             ui_manager_->grind_controller->stop_grind();
@@ -227,6 +223,51 @@ void GrindingUIController::handle_grind_button() {
             ui_manager_->grind_controller->return_to_idle();
         }
     }
+}
+
+void GrindingUIController::confirm_start_timer_cb(lv_timer_t* timer) {
+    auto* controller = static_cast<GrindingUIController*>(lv_timer_get_user_data(timer));
+    if (!controller) return;
+    controller->confirm_start_timer_ = nullptr;  // one-shot: LVGL deletes it
+    if (!controller->ui_manager_->state_machine->is_state(UIState::READY)) return;
+    if (!portafilter_detector.ok_to_grind()) {
+        LOG_BLE("[GRIND_START] Cancelled - portafilter %s\n",
+                PortafilterDetector::state_name(portafilter_detector.state()));
+        controller->show_grind_blocked(portafilter_detector.blocked_reason());
+        return;
+    }
+    controller->start_selected_profile_grind();
+}
+
+void GrindingUIController::start_selected_profile_grind() {
+    if (ui_manager_->grind_controller && ui_manager_->profile_controller) {
+        ui_manager_->grind_controller->set_grind_profile_id(ui_manager_->profile_controller->get_current_profile());
+    }
+
+    LOG_BLE("[%lums GRIND_START] About to call start_grind()\n", millis());
+    error_message_[0] = '\0';
+    error_grind_weight_ = 0.0f;
+    error_grind_progress_ = 0;
+
+    if (ui_manager_->profile_controller && ui_manager_->grind_controller) {
+        float target_weight = ui_manager_->profile_controller->get_current_weight();
+        float target_time_seconds = ui_manager_->profile_controller->get_current_time();
+        uint32_t target_time_ms = static_cast<uint32_t>((target_time_seconds * 1000.0f) + 0.5f);
+        ui_manager_->grind_controller->start_grind(target_weight, target_time_ms, ui_manager_->current_mode);
+    }
+    LOG_BLE("[%lums GRIND_START] start_grind() returned\n", millis());
+}
+
+void GrindingUIController::show_grind_blocked(const char* reason) {
+    LOG_BLE("[GRIND_START] Blocked: %s (portafilter %s)\n", reason,
+            PortafilterDetector::state_name(portafilter_detector.state()));
+    BlockingOperationOverlay::getInstance().show(reason);
+    lv_timer_t* hide = lv_timer_create(hide_message_timer_cb, 1500, nullptr);
+    lv_timer_set_repeat_count(hide, 1);
+}
+
+void GrindingUIController::hide_message_timer_cb(lv_timer_t*) {
+    BlockingOperationOverlay::getInstance().hide();
 }
 
 void GrindingUIController::handle_pulse_button() {

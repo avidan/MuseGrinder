@@ -17,3 +17,7 @@ void museWifiLoop();
 // selected profile (LVGL and profile edits belong to that task). Returns
 // true once per queued dose.
 bool museTakePendingDose(float* grams);
+
+// Full TX power while a WiFi firmware upload runs (the motor is idle then);
+// a 3MB upload at the reduced power can stall long enough to time out.
+void museWifiSetUploadActive(bool active);
