@@ -35,6 +35,7 @@ Complete build instructions, parts list, and usage guide for the Smart Grind-by-
   - [🔍 Diagnostic Report](#-diagnostic-report)
     - [Report Contents](#report-contents)
     - [Access Methods](#access-methods)
+  - [Screensaver](#screensaver)
   - [📊 Analytics \& Data Export](#-analytics--data-export)
     - [Launch Interactive Dashboard](#launch-interactive-dashboard)
     - [Available Tools](#available-tools)
@@ -49,7 +50,7 @@ Complete build instructions, parts list, and usage guide for the Smart Grind-by-
 
 > **Note:** All links are **for reference only** — sellers and items are **not personally verified** unless explicitly stated.
 
-- **[Waveshare ESP32-S3 1.64" AMOLED Touch Display](https://www.waveshare.com/esp32-s3-touch-amoled-1.64.htm)** — Main controller
+- **[Waveshare ESP32-S3 1.64" AMOLED Touch Display](https://www.waveshare.com/esp32-s3-touch-amoled-1.64.htm)** — Main controller. Waveshare has shipped incompatible V1 and V2 display revisions; confirm the revision before flashing.
 - **[HX711 ADC module](https://nl.aliexpress.com/item/1005006851380544.html)** — Load cell amplifier
 - **MAVIN or T70 load cell** (0.3 – 1 kg range) — Weight sensor
   ⚠️ Avoid cheap unshielded small load cells — accuracy will suffer
@@ -121,7 +122,7 @@ Watch the complete Eureka Mignon Specialita assembly process: **[YouTube Assembl
 
 **HX711 Load Cell Amplifier Connections:**
 ```
-ESP32-S3 GPIO 2    →    HX711 SCK
+ESP32-S3 GPIO 2 (V1) / GPIO 1 (V2) → HX711 SCK
 ESP32-S3 GPIO 3    →    HX711 DOUT
 ESP32-S3 3.3V      →    HX711 VCC
 ESP32-S3 GND       →    HX711 GND
@@ -163,17 +164,20 @@ Using the 4-pin Eureka plug pinout (see `../media/4-pin_Eureka_plug_pinout.png`)
 ```
 ESP32-S3 5V        →    Pin 1 (5V power)
                         Pin 2 (Button signal - not used in this project)
-ESP32-S3 GPIO 18   →    Pin 3 (Motor control signal)
+ESP32-S3 GPIO 18 (V1) / GPIO 16 (V2) → Pin 3 (Motor control signal)
 ESP32-S3 GND       →    Pin 4 (Ground)
 ```
 
 **4-Pin Eureka Plug Reference (Left to Right):**
 - **Pin 1**: 5V power supply
 - **Pin 2**: Button signal (unused in this project)  
-- **Pin 3**: Motor control signal *(active-high — the motor runs when GPIO 18 drives this pin to ~3.3V)*
+- **Pin 3**: Motor control signal *(active-high — the motor runs when the revision-specific GPIO drives this pin to ~3.3V)*
 - **Pin 4**: Ground
 
-⚠️ **VERIFY 5V:** Use a multimeter to confirm 5V pin - wire colors vary between units! The Waveshare board has reverse polarity protection, and button/motor wires can be swapped without risk of damage.
+> [!WARNING]
+> On V2, do not connect motor control to GPIO 18. It is shared with the touchscreen interrupt (`TP_INT`) and its pull-up circuitry can leak voltage into the grinder control input. The physically verified V2 wiring uses GPIO 16 for motor control and GPIO 1 for HX711 SCK.
+
+⚠️ **VERIFY 5V:** Use a multimeter to confirm the 5V pin and identify the motor lead by plug position, not colour. In the verified V2 Specialita installation, Pin 3 (motor control) was the **grey** wire and Pin 2 (unused button signal) was **white**; an earlier assumption had these reversed. Wire colours can differ between grinder revisions, so treat this only as a checked example and leave Pin 2 disconnected and insulated.
 
 ### Installation Steps
 
@@ -202,8 +206,18 @@ ESP32-S3 GND       →    Pin 4 (Ground)
 
 ## 🚀 Firmware Installation
 
+### Check the display revision first
+
+The 1.64-inch Waveshare board now exists in two firmware-incompatible revisions. V1 uses the original CO5300 display path; V2 uses an SH8601 controller, GPIO 46 chip select, and a 20-pixel framebuffer offset. Firmware built for the wrong revision can boot normally while the AMOLED remains completely black.
+
+The external wiring also differs: V1 uses GPIO 2 for HX711 SCK and GPIO 18 for motor control; V2 uses GPIO 1 for HX711 SCK and GPIO 16 for motor control. Select the correct firmware target and follow the matching wiring before powering the grinder.
+
+If the board was supplied with V2 factory firmware, or Waveshare's [official V2 demo](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.64-v2) works while V1 firmware stays black, use the V2 build target. See the [black-display troubleshooting entry](TROUBLESHOOTING.md#display-stays-black-after-flashing-waveshare-164-v2) before wiring the grinder.
+
 ### 🌐 Web Flasher (Recommended)
 **[🔗 Open Web Flasher Tool](https://jaapp.github.io/smart-grind-by-weight)**
+
+Before flashing, verify that the selected image matches your V1 or V2 hardware revision. If the flasher does not yet list a V2 image, build the `waveshare-esp32s3-touch-amoled-164-v2` source target instead; flashing the V1 image to V2 produces a black screen.
 
 **Browser Compatibility:**
 - ✅ **Chrome** (Desktop & Android) - Full support
@@ -231,6 +245,11 @@ ESP32-S3 GND       →    Pin 4 (Ground)
 - ✅ **No command line** - simple web interface
 - ✅ **Automatic version listing** - all releases available in dropdown
 - ✅ **Wireless updates** - once installed, never need USB again
+
+**Screensaver tools:**
+- Upload a custom 280 × 456 image from the **Screensaver** tab
+- Configure idle timeout (30-3600 seconds) and startup image timeout (1-30 seconds)
+- Screensaver brightness and startup/sleep enable toggles remain on the grinder under **Menu → Display**
 
 *Initial USB flashing powered by [ESP Web Tools](https://esphome.github.io/esp-web-tools/)*
 
@@ -345,6 +364,7 @@ Need a simple live readout? Open **Menu → Scale** to jump into a full-screen w
 - **Arc Layout**: Clean, minimal arc-based interface
 - **Nerdy Layout**: Detailed charts showing flow rates and real-time grinding analytics
 - **Switching**: Tap anywhere on grind screen to switch between layouts during grinding
+- **Screensaver**: Custom image can show on startup or when the display dims.
 
 ---
 
@@ -381,9 +401,10 @@ Main Screen (swipe left/right between tabs, up/down to toggle weight/time mode i
     |   |   |-- Connection status display
     |   |   \-- Auto-disable timer display
     |   |
-    |   +-- Display
-    |   |   |-- Normal brightness slider
-    |   |   \-- Screensaver brightness slider
+	    |   +-- Display
+	    |   |   |-- Normal brightness slider
+	    |   |   |-- Screensaver brightness slider
+	    |   |   \-- Screensaver startup/sleep toggles
     |   |
     |   \-- Grind Settings
     |       |-- Swipe Gestures toggle (enable/disable vertical swipes)
@@ -486,6 +507,17 @@ python3 tools/grinder.py diagnostics --save diagnostic-report.txt
 - Checking motor latency settings after auto-tune
 - Confirming firmware version and compile-time parameters
 - General troubleshooting and system health assessment
+
+---
+
+## Screensaver
+
+The screensaver uses a custom 280 × 456 RGB565 image uploaded from the Web Flasher.
+
+- **Timing settings**: Configure idle timeout and startup image timeout in the Web Flasher **Screensaver** tab.
+- **Device settings**: Configure brightness and startup/sleep enable toggles under **Menu → Display**.
+- **Startup behavior**: On normal Ready boots, the image is drawn early while the full UI initializes, then the regular timed screensaver overlay takes over.
+- **OTA behavior**: During BLE OTA updates and OTA failure warnings, the screensaver is disabled so progress and recovery prompts stay visible.
 
 ---
 

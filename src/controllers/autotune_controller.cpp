@@ -4,9 +4,8 @@
 #include <cstring>
 #include <cstdarg>
 
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
 #include "../hardware/mock_hx711_driver.h"
-#endif
+#include "../system/simulation_mode.h"
 
 AutoTuneController::AutoTuneController()
     : weight_sensor(nullptr)
@@ -487,9 +486,9 @@ void AutoTuneController::start_pulse(float pulse_duration_ms) {
     grinder->start_pulse_rmt(static_cast<uint32_t>(pulse_duration_ms));
 
     // Notify mock driver for weight simulation
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-    MockHX711Driver::notify_pulse(static_cast<uint32_t>(pulse_duration_ms));
-#endif
+    if (SimulationMode::enabled()) {
+        MockHX711Driver::notify_pulse(static_cast<uint32_t>(pulse_duration_ms));
+    }
 
     switch_sub_phase(AutoTuneSubPhase::PULSE_EXECUTE);
 }

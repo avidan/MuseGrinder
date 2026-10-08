@@ -51,9 +51,19 @@ typedef struct {
     const void *patch;
     int offset;
     int size;
+    int erase_size;  // bytes to erase before writing (page aligned)
+    int erased;      // bytes erased so far
 } delta_partition_writer_t;
 
+// Find the patch partition and prepare the writer; erases everything before
+// returning (can take several seconds for a full image).
 int delta_partition_init(delta_partition_writer_t *writer, const char *partition, int patch_size);
+
+// Non-blocking alternative to delta_partition_init: begin() sets up the
+// writer, then call erase_step() repeatedly until it returns 1 (done).
+// Returns 0 while more remains, negative on error.
+int delta_partition_begin(delta_partition_writer_t *writer, const char *partition, int patch_size);
+int delta_partition_erase_step(delta_partition_writer_t *writer, int max_bytes);
 
 int delta_partition_write(delta_partition_writer_t *writer, const char *buf, int size);
 

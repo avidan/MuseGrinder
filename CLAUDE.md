@@ -17,6 +17,7 @@ python3 tools/grinder.py analyze
 **Common Commands:**
 - `python3 tools/grinder.py build` - Build firmware only
 - `python3 tools/grinder.py upload` - Upload latest firmware via BLE
+- `python3 tools/wifi_upload.py` - Upload firmware over WiFi to `musegrinder.local` (preferred once the grinder is on WiFi; `--env ...-v2` for V2 boards)
 - `python3 tools/grinder.py export` - Export grind data to database
 - `python3 tools/grinder.py report` - Launch Streamlit report from existing data
 - `python3 tools/grinder.py scan` - Scan for BLE devices
@@ -36,7 +37,7 @@ python3 tools/grinder.py analyze
 - **GrindController**: 9-phase state machine with predictive flow control, 10 pulse corrections, mechanical instability detection, and time mode additional pulses
 - **LoadCell (HX711)**: Multi-mode precision weight measurement (instant, smoothed, filtered), calibration flag, noise diagnostics
 - **DiagnosticsController**: System health monitoring (calibration status, sustained noise, mechanical instability), state persistence, hysteresis, priority-based warnings
-- **UIManager**: 7 screens with LVGL integration; menu page surfaces quick Tools (Scale view, Calibrate, Tune Pulses, Motor Test) followed by Settings (Bluetooth, Display, Grind Settings) and Info sections (Diagnostics, System Info, Logs & Data, Lifetime Stats), warning icon indicator, split-button layout for time mode pulses
+- **UIManager**: 7 screens with LVGL integration; menu page surfaces quick Tools (Scale view, Calibrate, Tune Pulses, Motor Test, Jolly animation preview, Simulation mode) followed by Settings (Bluetooth, Display, Grind Settings) and Info sections (Diagnostics, System Info, Logs & Data, Lifetime Stats), warning icon indicator, split-button layout for time mode pulses
 - **StateMachine**: Central state coordination (READY → GRINDING → GRIND_COMPLETE)
 
 **Update Intervals:** 20ms grind control, 25ms load cell (active), 50ms UI/hardware
@@ -55,6 +56,18 @@ python3 tools/grinder.py analyze
 - **Purge popup**: "Keep purge grinds from now on" checkbox switches mode from Purge → Prime in preferences
 - **Logging disabled** during PURGE_CONFIRM phase to avoid capturing data while paused
 - **Preferences**: `chute_mode` (int: 0=Prime, 1=Purge, default=1), `chute_amount_g` (float: 0.1-5.0, default=1.0)
+
+**Simulation Mode:** Menu → Tools → Simulation (NVS `simulation/enabled`, read once at boot by `SimulationMode::load()` in `src/system/simulation_mode.*`; changing it restarts the device). When active, `MockHX711Driver` replaces the HX711 (weight rises at `DEBUG_MOCK_FLOW_RATE_GPS` = 2.0 g/s while the motor is "on", with start delay/ramp/coast), the motor relay is never initialized or driven, calibration is fixed and not saved, and the background uses `THEME_COLOR_BACKGROUND_MOCK`. Check `SimulationMode::enabled()` instead of `DEBUG_ENABLE_LOADCELL_MOCK`; the `-mock` build env forces it on.
+
+**WiFi OTA:** `POST /ota` on the Muse HTTP server (`src/muse/muse_ota.*`) streams a full image into the spare app slot (sequential erase), refuses while grinding, and only boots it if it validates and its board marker (`src/system/board_id.*`) matches. The password is generated on first build into the gitignored `.ota_password` and compiled in as `MUSE_OTA_PASSWORD` (`tools/build-scripts/pre_ota_secret.py`); `tools/wifi_upload.py` reads it.
+
+**BLE stack lifetime:** the BLE stack and GATT services are created once per boot; `disable()` only stops advertising and drops the client. Arduino's `BLEDevice::deinit(false)` keeps the static `BLEServer`, so re-creating services after a deinit duplicated the OTA service.
+
+**Portafilter Detection:** `PortafilterDetector` (`src/controllers/portafilter_detector.*`, global `portafilter_detector`, updated from `loop()`) classifies the untared scale weight (raw / cal factor - tares don't affect it) as present / absent / moving / other / unknown. It learns from steady-to-steady steps of 250-800g: the lower plateau is the empty baseline and the step joins the portafilter weight band (a portafilter reads differently depending on how it's seated, e.g. 383 vs 433g). Learned values persist in NVS `portafilter` with the calibration factor and are dropped if calibration changes. The grind button starts only when the portafilter is present and steady for 1s, re-checked 300ms after the press; Muse `/target` returns 409 otherwise. `unknown` (nothing learned, or simulation mode) never blocks.
+
+**Crash Log:** `LOG_BLE`, `BluetoothManager::log()` and ESP-IDF `ESP_LOGx` are mirrored into a 2KB RTC-memory ring buffer (`src/system/crash_log.*`) that survives panics, watchdog resets and `esp_restart()`. `python3 tools/grinder.py info` shows the last reset reason; `python3 tools/grinder.py diagnostics` includes the log from before the last reset and this boot's recent log. Use it to debug boards without USB.
+
+**Grinding Overlay:** While in `UIState::GRINDING`, `GrindJollyOverlay` (top layer) shows only the straining Jolly at full width; tapping it stops the grind. On `GRIND_COMPLETE` it shows only the dancing Jolly for `USER_GRIND_COMPLETE_DISPLAY_MS` (5s), then returns to the Ready (dose selection) screen; tapping returns sooner. It hides on every other state, so timeouts show the normal grinding screen.
 
 **Time Mode Pulses:** Split-button completion screen (OK + PULSE), `TIME_ADDITIONAL_PULSE` phase, 100ms duration
 

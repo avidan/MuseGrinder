@@ -1,9 +1,8 @@
 #include "grinder.h"
 #include "../controllers/grind_events.h"
 #include "../config/constants.h"
-#if DEBUG_ENABLE_LOADCELL_MOCK
 #include "mock_hx711_driver.h"
-#endif
+#include "../system/simulation_mode.h"
 
 void Grinder::init(int pin) {
     motor_pin = pin;
@@ -17,10 +16,10 @@ void Grinder::init(int pin) {
     background_active = false;
     ui_event_callback = nullptr;
 
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    initialized = true;
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        initialized = true;
+        return;
+    }
     
     // Initialize RMT for all motor control (both continuous and pulse)
     rmt_tx_channel_config_t tx_chan_config = {
@@ -39,15 +38,15 @@ void Grinder::init(int pin) {
 }
 
 void Grinder::start() {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    if (!initialized) return;
-    MockHX711Driver::notify_grinder_start();
-    pulse_active = false;
-    grinding = true;
-    motor_start_time = millis();
-    emit_background_change(true);
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        if (!initialized) return;
+        MockHX711Driver::notify_grinder_start();
+        pulse_active = false;
+        grinding = true;
+        motor_start_time = millis();
+        emit_background_change(true);
+        return;
+    }
     if (!initialized || !rmt_initialized) return;
 
     // Reset any active pulse state when using continuous mode
@@ -84,14 +83,14 @@ void Grinder::start() {
 }
 
 void Grinder::stop() {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    if (!initialized) return;
-    MockHX711Driver::notify_grinder_stop();
-    grinding = false;
-    pulse_active = false;
-    emit_background_change(false);
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        if (!initialized) return;
+        MockHX711Driver::notify_grinder_stop();
+        grinding = false;
+        pulse_active = false;
+        emit_background_change(false);
+        return;
+    }
     if (!initialized || !rmt_initialized) return;
     
     // Stop RMT transmission (works for both infinite loop and finite pulses)
@@ -110,15 +109,15 @@ void Grinder::stop() {
 }
 
 void Grinder::start_pulse_rmt(uint32_t duration_ms) {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    if (!initialized) return;
-    MockHX711Driver::notify_pulse(duration_ms);
-    pulse_active = true;
-    grinding = true;
-    motor_start_time = millis();
-    emit_background_change(true);
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        if (!initialized) return;
+        MockHX711Driver::notify_pulse(duration_ms);
+        pulse_active = true;
+        grinding = true;
+        motor_start_time = millis();
+        emit_background_change(true);
+        return;
+    }
     if (!initialized || !rmt_initialized) return;
 
     motor_start_time = millis();
@@ -180,16 +179,16 @@ void Grinder::start_pulse_rmt(uint32_t duration_ms) {
 }
 
 bool Grinder::is_pulse_complete() {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    if (!pulse_active) return true;
-    if (!MockHX711Driver::is_pulse_active()) {
-        pulse_active = false;
-        grinding = false;
-        emit_background_change(false);
-        return true;
+    if (SimulationMode::enabled()) {
+        if (!pulse_active) return true;
+        if (!MockHX711Driver::is_pulse_active()) {
+            pulse_active = false;
+            grinding = false;
+            emit_background_change(false);
+            return true;
+        }
+        return false;
     }
-    return false;
-#endif
     if (!pulse_active) return true;
     
     // For simplicity, we'll use a transmission done callback approach

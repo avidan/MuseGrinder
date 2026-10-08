@@ -328,6 +328,8 @@ class GrinderBLETool:
         while time.time() - start_time < timeout:
             if self.current_ota_status == expected_status:
                 return True
+            if self.current_ota_status == BLE_OTA_ERROR:
+                return False
         
             self.status_updated.clear()
             try:
@@ -484,9 +486,15 @@ class GrinderBLETool:
             start_data += struct.pack('<B', 0)
             
         self.safe_print(f"[INFO] Sending {'full' if is_full_update else 'delta'} update flag")
+        self.current_ota_status = BLE_OTA_IDLE  # ignore any stale status from before START
         await self.client.write_gatt_char(BLE_OTA_CONTROL_CHAR_UUID, bytes([BLE_OTA_CMD_START]) + start_data)
         
-        if not await self.wait_for_ota_status(BLE_OTA_RECEIVING, timeout=15): return False
+        # Newer firmware replies READY at once and erases the patch partition in
+        # the background before switching to RECEIVING; a full image can take a
+        # while. Older firmware erases first and goes straight to RECEIVING.
+        if not await self.wait_for_ota_status(BLE_OTA_RECEIVING, timeout=90):
+            self.safe_print("[ERROR] Device did not become ready to receive the update")
+            return False
         
         start_time = time.time()
         try:
@@ -1071,6 +1079,7 @@ class GrinderBLETool:
         self.safe_print(f"   Build:        #{system.get('build', 'Unknown')}")
         self.safe_print(f"   Uptime:       {system.get('uptime_h', 0):02d}:{system.get('uptime_m', 0):02d}:{system.get('uptime_s', 0):02d}")
         self.safe_print(f"   CPU Freq:     {system.get('cpu_freq', 'Unknown')} MHz")
+        self.safe_print(f"   Last reset:   {system.get('reset_reason', 'Unknown (older firmware)')}")
         
         # Memory Information  
         self.safe_print(f"[MEMORY]:")
@@ -1089,7 +1098,15 @@ class GrinderBLETool:
         self.safe_print(f"   Tasks:        {performance.get('tasks_registered', 0)} registered")
         self.safe_print(f"   Load Cell:    {performance.get('load_cell_freq_hz', 0)} Hz")
         self.safe_print(f"   Grind Ctrl:   {performance.get('grind_control_freq_hz', 0)} Hz")
-        self.safe_print(f"   UI Updates:   {performance.get('ui_freq_hz', 0)} Hz")
+        ui_configured_hz = performance.get('ui_configured_hz', performance.get('ui_freq_hz', 0))
+        self.safe_print(f"   UI Configured:{ui_configured_hz:>5} Hz")
+        if 'ui_actual_hz' in performance:
+            self.safe_print(f"   UI Actual:    {performance.get('ui_actual_hz', 0):>5} Hz")
+            self.safe_print(f"   Rendered:     {performance.get('render_hz', 0):>5} FPS")
+            self.safe_print(f"   LVGL Refresh: {performance.get('lvgl_refresh_hz', 0):>5} Hz")
+            self.safe_print(f"   Pixels:       {performance.get('pixels_per_s', 0):>9,}/s")
+            self.safe_print(f"   Render Avg:   {performance.get('render_avg_us', 0):>9,} us")
+            self.safe_print(f"   Flush Avg:    {performance.get('flush_avg_us', 0):>9,} us")
         
         # Hardware Status
         self.safe_print(f"[HARDWARE]:")

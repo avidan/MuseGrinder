@@ -1,4 +1,7 @@
 #include "grinding_controller.h"
+#include "../../system/simulation_mode.h"
+#include "../../controllers/portafilter_detector.h"
+#include "../components/blocking_overlay.h"
 
 #include <Arduino.h>
 #include <cstdio>
@@ -200,22 +203,16 @@ void GrindingUIController::handle_grind_button() {
             return;
         }
 
-        if (ui_manager_->grind_controller && ui_manager_->profile_controller) {
-            ui_manager_->grind_controller->set_grind_profile_id(ui_manager_->profile_controller->get_current_profile());
+        // Only grind into a seated portafilter. A hand brushing the button while
+        // lifting the portafilter can press it a moment before the weight moves,
+        // so confirm again shortly before starting.
+        if (!portafilter_detector.ok_to_grind()) {
+            show_grind_blocked(portafilter_detector.blocked_reason());
+            return;
         }
-
-        LOG_BLE("[%lums GRIND_START] About to call start_grind()\n", millis());
-        error_message_[0] = '\0';
-        error_grind_weight_ = 0.0f;
-        error_grind_progress_ = 0;
-
-        if (ui_manager_->profile_controller && ui_manager_->grind_controller) {
-            float target_weight = ui_manager_->profile_controller->get_current_weight();
-            float target_time_seconds = ui_manager_->profile_controller->get_current_time();
-            uint32_t target_time_ms = static_cast<uint32_t>((target_time_seconds * 1000.0f) + 0.5f);
-            ui_manager_->grind_controller->start_grind(target_weight, target_time_ms, ui_manager_->current_mode);
-        }
-        LOG_BLE("[%lums GRIND_START] start_grind() returned\n", millis());
+        if (confirm_start_timer_) return;  // already confirming
+        confirm_start_timer_ = lv_timer_create(confirm_start_timer_cb, 300, this);
+        lv_timer_set_repeat_count(confirm_start_timer_, 1);
     } else if (ui_manager_->state_machine->is_state(UIState::GRINDING)) {
         if (ui_manager_->grind_controller) {
             ui_manager_->grind_controller->stop_grind();
@@ -228,18 +225,76 @@ void GrindingUIController::handle_grind_button() {
     }
 }
 
+void GrindingUIController::confirm_start_timer_cb(lv_timer_t* timer) {
+    auto* controller = static_cast<GrindingUIController*>(lv_timer_get_user_data(timer));
+    if (!controller) return;
+    controller->confirm_start_timer_ = nullptr;  // one-shot: LVGL deletes it
+    if (!controller->ui_manager_->state_machine->is_state(UIState::READY)) return;
+    if (!portafilter_detector.ok_to_grind()) {
+        LOG_BLE("[GRIND_START] Cancelled - portafilter %s\n",
+                PortafilterDetector::state_name(portafilter_detector.state()));
+        controller->show_grind_blocked(portafilter_detector.blocked_reason());
+        return;
+    }
+    controller->start_selected_profile_grind();
+}
+
+void GrindingUIController::start_selected_profile_grind() {
+    if (ui_manager_->grind_controller && ui_manager_->profile_controller) {
+        ui_manager_->grind_controller->set_grind_profile_id(ui_manager_->profile_controller->get_current_profile());
+    }
+
+    LOG_BLE("[%lums GRIND_START] About to call start_grind()\n", millis());
+    error_message_[0] = '\0';
+    error_grind_weight_ = 0.0f;
+    error_grind_progress_ = 0;
+
+    if (ui_manager_->profile_controller && ui_manager_->grind_controller) {
+        float target_weight = ui_manager_->profile_controller->get_current_weight();
+        float target_time_seconds = ui_manager_->profile_controller->get_current_time();
+        uint32_t target_time_ms = static_cast<uint32_t>((target_time_seconds * 1000.0f) + 0.5f);
+        ui_manager_->grind_controller->start_grind(target_weight, target_time_ms, ui_manager_->current_mode);
+    }
+    LOG_BLE("[%lums GRIND_START] start_grind() returned\n", millis());
+}
+
+void GrindingUIController::show_grind_blocked(const char* reason) {
+    LOG_BLE("[GRIND_START] Blocked: %s (portafilter %s)\n", reason,
+            PortafilterDetector::state_name(portafilter_detector.state()));
+    BlockingOperationOverlay::getInstance().show(reason);
+    lv_timer_t* hide = lv_timer_create(hide_message_timer_cb, 1500, nullptr);
+    lv_timer_set_repeat_count(hide, 1);
+}
+
+void GrindingUIController::hide_message_timer_cb(lv_timer_t*) {
+    BlockingOperationOverlay::getInstance().hide();
+}
+
 void GrindingUIController::handle_pulse_button() {
     if (!ui_manager_ || !ui_manager_->grind_controller) {
         return;
     }
 
-    // Check if we're in PURGE_CONFIRM phase - pulse button acts as CONTINUE
+    // PURGE_CONFIRM: pulse button acts as CONTINUE
     if (ui_manager_->purge_confirm_screen.is_visible()) {
         handle_purge_confirm_continue();
         return;
     }
 
-    // Normal time mode pulse behavior
+    // TIME_GRINDING: pulse button toggles pause/resume
+    if (ui_manager_->grind_controller->get_phase() == GrindPhase::TIME_GRINDING) {
+        if (ui_manager_->grind_controller->is_grind_paused()) {
+            LOG_BLE("[UIManager] Resume button clicked\n");
+            ui_manager_->grind_controller->resume_grind();
+        } else {
+            LOG_BLE("[UIManager] Pause button clicked\n");
+            ui_manager_->grind_controller->pause_grind();
+        }
+        update_grind_button_icon();
+        return;
+    }
+
+    // GRIND_COMPLETE: additional time mode pulse
     if (ui_manager_->grind_controller->can_pulse()) {
         LOG_BLE("[UIManager] Pulse button clicked - requesting additional pulse\n");
         ui_manager_->grind_controller->start_additional_pulse();
@@ -302,11 +357,7 @@ void GrindingUIController::update_grind_button_icon() {
         lv_obj_set_style_bg_color(grind_button_, lv_color_hex(THEME_COLOR_ERROR), 0);
     } else if (ui_manager_->state_machine->is_state(UIState::GRINDING)) {
         lv_img_set_src(grind_icon_, LV_SYMBOL_STOP);
-        lv_obj_set_style_bg_color(grind_button_,
-                                  ui_manager_->current_mode == GrindMode::TIME
-                                      ? lv_color_hex(THEME_COLOR_ACCENT)
-                                      : lv_color_hex(THEME_COLOR_PRIMARY),
-                                  0);
+        lv_obj_set_style_bg_color(grind_button_, lv_color_hex(THEME_COLOR_PRIMARY), 0);
     } else if (ui_manager_->state_machine->is_state(UIState::GRIND_COMPLETE)) {
         lv_img_set_src(grind_icon_, LV_SYMBOL_OK);
         lv_obj_set_style_bg_color(grind_button_, lv_color_hex(THEME_COLOR_SUCCESS), 0);
@@ -333,33 +384,46 @@ void GrindingUIController::update_button_layout() {
         return;
     }
 
-    // Check if we're in PURGE_CONFIRM phase (show dual buttons for CANCEL + CONTINUE)
     bool in_purge_confirm = ui_manager_->purge_confirm_screen.is_visible();
+
+    bool in_time_grinding = (ui_manager_->current_mode == GrindMode::TIME &&
+                             ui_manager_->grind_controller &&
+                             ui_manager_->grind_controller->get_phase() == GrindPhase::TIME_GRINDING &&
+                             ui_manager_->state_machine->is_state(UIState::GRINDING));
+    bool is_time_grind_paused = in_time_grinding && ui_manager_->grind_controller->is_grind_paused();
 
     bool should_show_pulse = (ui_manager_->state_machine->is_state(UIState::GRIND_COMPLETE) &&
                               ui_manager_->current_mode == GrindMode::TIME);
 
-    if (in_purge_confirm || should_show_pulse) {
-        // Dual button layout: left button at -60, right button at +60
+    if (in_purge_confirm || in_time_grinding || should_show_pulse) {
+        // Dual button layout: left=STOP/CANCEL, right=context-specific action
         lv_obj_align(grind_button_, LV_ALIGN_BOTTOM_MID, -60, -10);
         if (pulse_button_) {
             lv_obj_align(pulse_button_, LV_ALIGN_BOTTOM_MID, 60, -10);
             lv_obj_clear_flag(pulse_button_, LV_OBJ_FLAG_HIDDEN);
 
             if (in_purge_confirm) {
-                // Purge confirm: pulse button acts as CONTINUE (always enabled)
                 lv_img_set_src(pulse_icon_, LV_SYMBOL_OK);
                 lv_obj_set_style_bg_color(pulse_button_, lv_color_hex(THEME_COLOR_SUCCESS), 0);
                 lv_obj_clear_state(pulse_button_, LV_STATE_DISABLED);
                 lv_obj_set_style_bg_opa(pulse_button_, LV_OPA_COVER, 0);
+            } else if (in_time_grinding) {
+                // Pause / Resume toggle
+                if (is_time_grind_paused) {
+                    lv_img_set_src(pulse_icon_, LV_SYMBOL_PLAY);
+                    lv_obj_set_style_bg_color(pulse_button_, lv_color_hex(THEME_COLOR_SUCCESS), 0);
+                } else {
+                    lv_img_set_src(pulse_icon_, LV_SYMBOL_PAUSE);
+                    lv_obj_set_style_bg_color(pulse_button_, lv_color_hex(THEME_COLOR_ACCENT), 0);
+                }
+                lv_obj_clear_state(pulse_button_, LV_STATE_DISABLED);
+                lv_obj_set_style_bg_opa(pulse_button_, LV_OPA_COVER, 0);
             } else if (ui_manager_->grind_controller && ui_manager_->grind_controller->can_pulse()) {
-                // Time mode pulse: enable/disable based on can_pulse()
                 lv_img_set_src(pulse_icon_, LV_SYMBOL_PLUS);
                 lv_obj_set_style_bg_color(pulse_button_, lv_color_hex(THEME_COLOR_ACCENT), 0);
                 lv_obj_clear_state(pulse_button_, LV_STATE_DISABLED);
                 lv_obj_set_style_bg_opa(pulse_button_, LV_OPA_COVER, 0);
             } else {
-                // Time mode pulse: disabled
                 lv_img_set_src(pulse_icon_, LV_SYMBOL_PLUS);
                 lv_obj_set_style_bg_color(pulse_button_, lv_color_hex(THEME_COLOR_ACCENT), 0);
                 lv_obj_add_state(pulse_button_, LV_STATE_DISABLED);
@@ -367,7 +431,7 @@ void GrindingUIController::update_button_layout() {
             }
         }
     } else {
-        // Single button layout: centered at 0
+        // Single button layout: centered
         lv_obj_align(grind_button_, LV_ALIGN_BOTTOM_MID, 0, -10);
         if (pulse_button_) {
             lv_obj_add_flag(pulse_button_, LV_OBJ_FLAG_HIDDEN);
@@ -422,7 +486,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
                              millis(), event_data.phase_display_text);
                 WeightSensor* weight_sensor = ui_manager_->hardware_manager->get_weight_sensor();
                 ui_manager_->grinding_screen.update_profile_name(ui_manager_->profile_controller->get_current_name());
-                ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+                ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
                 chart_updates_enabled_ = true;
                 update_grinding_targets();
                 if (weight_sensor) {
@@ -439,6 +503,14 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
 
             if (ui_manager_->state_machine->is_state(UIState::GRIND_COMPLETE)) {
                 update_button_layout();
+            }
+
+            // Update button layout when phase changes within TIME mode GRINDING
+            // (e.g. entering/exiting TIME_GRINDING to show/hide pause button)
+            if (event_data.mode == GrindMode::TIME &&
+                ui_manager_->state_machine->is_state(UIState::GRINDING) &&
+                event_data.phase != GrindPhase::PURGE_CONFIRM) {
+                update_grind_button_icon();
             }
 
             if (event_data.show_taring_text) {
@@ -463,7 +535,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
                 ui_manager_->grinding_screen.update_tare_display();
             } else {
                 ui_manager_->current_mode = event_data.mode;
-                ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+                ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
                 ui_manager_->grinding_screen.update_current_weight(event_data.current_weight);
                 ui_manager_->grinding_screen.update_progress(event_data.progress_percent);
 
@@ -480,7 +552,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
         }
         case UIGrindEvent::COMPLETED: {
             ui_manager_->current_mode = event_data.mode;
-            ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+            ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
             final_grind_weight_ = event_data.final_weight;
             final_grind_progress_ = event_data.progress_percent;
             LOG_BLE("GRIND COMPLETE - Final settled weight captured: %.2fg (Progress: %d%%)\n",
@@ -492,7 +564,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
         }
         case UIGrindEvent::TIMEOUT: {
             ui_manager_->current_mode = event_data.mode;
-            ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+            ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
             error_grind_weight_ = event_data.error_weight;
             error_grind_progress_ = event_data.error_progress;
             const char* message = event_data.error_message ? event_data.error_message : "Error";
@@ -522,11 +594,7 @@ void GrindingUIController::handle_grind_event(const GrindEventData& event_data) 
                 style_initialized = true;
             }
 
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-            lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND_MOCK);
-#else
-            lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND);
-#endif
+            lv_color_t inactive_color = SimulationMode::enabled() ? lv_color_hex(THEME_COLOR_BACKGROUND_MOCK) : lv_color_hex(THEME_COLOR_BACKGROUND);
             lv_color_t bg_color = event_data.background_active ?
                 lv_color_hex(THEME_COLOR_GRINDER_ACTIVE) :
                 inactive_color;
@@ -596,7 +664,7 @@ void GrindingUIController::enter_grinding_state() {
     WeightSensor* weight_sensor = ui_manager_->hardware_manager->get_weight_sensor();
     ui_manager_->grinding_screen.reset_chart_data();
     ui_manager_->grinding_screen.update_profile_name(ui_manager_->profile_controller->get_current_name());
-    ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+    ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
     chart_updates_enabled_ = true;
     update_grinding_targets();
     if (weight_sensor) {
@@ -613,7 +681,7 @@ void GrindingUIController::enter_grind_complete_state() {
         lv_obj_clear_flag(grind_button_, LV_OBJ_FLAG_HIDDEN);
     }
     ui_manager_->grinding_screen.update_profile_name(ui_manager_->profile_controller->get_current_name());
-    ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+    ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
     ui_manager_->grinding_screen.update_current_weight(final_grind_weight_);
     ui_manager_->grinding_screen.update_progress(final_grind_progress_);
 }
@@ -622,7 +690,7 @@ void GrindingUIController::enter_grind_timeout_state() {
     if (grind_button_) {
         lv_obj_clear_flag(grind_button_, LV_OBJ_FLAG_HIDDEN);
     }
-    ui_manager_->grinding_screen.set_mode(ui_manager_->current_mode);
+    ui_manager_->grinding_screen.set_mode(ui_manager_->grind_controller->get_session_descriptor().mode);
     ui_manager_->grinding_screen.update_profile_name("ERROR");
     char error_display[64];
     const char* message = error_message_[0] ? error_message_ : "Error";
@@ -645,7 +713,7 @@ void GrindingUIController::start_grind_complete_timer() {
     if (grind_complete_timer_) {
         lv_timer_del(grind_complete_timer_);
     }
-    grind_complete_timer_ = lv_timer_create(grind_complete_timer_cb, 60000, this);
+    grind_complete_timer_ = lv_timer_create(grind_complete_timer_cb, USER_GRIND_COMPLETE_DISPLAY_MS, this);
     lv_timer_set_repeat_count(grind_complete_timer_, 1);
 }
 

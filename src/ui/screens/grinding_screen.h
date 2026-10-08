@@ -39,6 +39,12 @@ public:
     void set_mode(GrindMode mode);
     void set_chart_time_prediction(uint32_t predicted_time_ms);
 
+    // Muse mascot state: true while the motor is running.
+    void set_straining(bool straining) {
+        arc_screen.setStraining(straining);
+        chart_screen.setStraining(straining);
+    }
+
     // ADDED: Public accessors for individual screen objects
     lv_obj_t* get_arc_screen_obj() const { return arc_screen.get_screen(); }
     lv_obj_t* get_chart_screen_obj() const { return chart_screen.get_screen(); }

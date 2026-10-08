@@ -5,6 +5,7 @@
 #include "../../controllers/grind_controller.h"
 #include "../../system/diagnostics_controller.h"
 #include "../ui_helpers.h"
+#include "../../muse/muse_mascot.h"
 
 class GrindingScreen;  // Forward declaration
 
@@ -17,6 +18,12 @@ private:
     lv_obj_t* display_page;
     lv_obj_t* grind_mode_page;
     lv_obj_t* data_page;
+    lv_obj_t* jolly_page;
+    lv_obj_t* simulation_page;
+    lv_obj_t* simulation_toggle;
+    lv_obj_t* simulation_apply_button;
+    lv_obj_t* jolly_strain_toggle;
+    MuseMascot jolly_preview;
     lv_obj_t* stats_page;
     lv_obj_t* diagnostics_page;
     lv_obj_t* scale_page;
@@ -53,6 +60,8 @@ private:
     lv_obj_t* brightness_screensaver_slider;
     lv_obj_t* brightness_normal_label;
     lv_obj_t* brightness_screensaver_label;
+    lv_obj_t* screensaver_startup_toggle;
+    lv_obj_t* screensaver_sleep_toggle;
     lv_obj_t* purge_button;
     lv_obj_t* reset_button;
     
@@ -66,6 +75,8 @@ private:
     lv_obj_t* grinder_purge_amount_label;
     lv_obj_t* grind_freshness_hours_slider;
     lv_obj_t* grind_freshness_hours_label;
+    lv_obj_t* coast_ratio_slider;
+    lv_obj_t* coast_ratio_label;
 
     // Tools entries / scale page elements
     lv_obj_t* scale_item;
@@ -97,6 +108,7 @@ private:
 
 public:
     static constexpr float kPurgeSliderScale = 10.0f; // Slider uses 0.1g increments
+    static constexpr float kCoastRatioSliderScale = 20.0f; // Slider uses 0.05 increments
 
     void create(BluetoothManager* bluetooth, GrindController* grind_ctrl, GrindingScreen* grind_screen, class HardwareManager* hw_mgr, DiagnosticsController* diag_ctrl);
     void show();
@@ -112,6 +124,7 @@ public:
     void update_grind_mode_toggles();
     void update_grinder_purge_amount_label(float amount_g);
     void update_grind_freshness_hours_label(float hours);
+    void update_coast_ratio_label(float ratio);
     void reset_scale_display();
     void update_scale_weight(float weight);
 
@@ -139,6 +152,10 @@ public:
     lv_obj_t* get_grinder_purge_mode_radio_group() const { return grinder_purge_mode_radio_group; }
     lv_obj_t* get_grinder_purge_amount_slider() const { return grinder_purge_amount_slider; }
     lv_obj_t* get_grind_freshness_hours_slider() const { return grind_freshness_hours_slider; }
+    lv_obj_t* get_coast_ratio_slider() const { return coast_ratio_slider; }
+    lv_obj_t* get_screensaver_startup_toggle() const { return screensaver_startup_toggle; }
+    lv_obj_t* get_screensaver_sleep_toggle() const { return screensaver_sleep_toggle; }
+    void update_screensaver_toggles();
 
 private:
     void create_menu_ui();
@@ -148,6 +165,12 @@ private:
     void create_grind_mode_page(lv_obj_t* parent);
     void create_scale_page(lv_obj_t* parent);
     void create_data_page(lv_obj_t* parent);
+    void create_jolly_page(lv_obj_t* parent);
+    void create_simulation_page(lv_obj_t* parent);
+    static void simulation_toggled_cb(lv_event_t* e);
+    static void simulation_apply_cb(lv_event_t* e);
+    static void jolly_preview_tapped_cb(lv_event_t* e);
+    static void jolly_strain_toggled_cb(lv_event_t* e);
     void create_stats_page(lv_obj_t* parent);
     void create_diagnostics_page(lv_obj_t* parent);
     lv_obj_t* create_separator(lv_obj_t* parent, const char* text = nullptr);

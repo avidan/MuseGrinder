@@ -106,6 +106,7 @@ void GrindLogger::start_grind_session(const GrindSessionDescriptor& descriptor, 
     current_session->termination_reason = static_cast<uint8_t>(GrindTerminationReason::UNKNOWN);
 
     initialize_session_config();
+    current_session->latency_to_coast_ratio = descriptor.latency_to_coast_ratio;
 
     logging_active = true;
     session_start_time = millis();

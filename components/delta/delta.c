@@ -189,7 +189,7 @@ static int delta_set_boot_partition(flash_mem_t *flash)
     return DELTA_OK;
 }
 
-int delta_partition_init(delta_partition_writer_t *writer, const char *partition, int patch_size)
+int delta_partition_begin(delta_partition_writer_t *writer, const char *partition, int patch_size)
 {
     if (writer == NULL || partition == NULL) {
         return -DELTA_INVALID_ARGUMENT_ERROR;
@@ -202,30 +202,52 @@ int delta_partition_init(delta_partition_writer_t *writer, const char *partition
         return ESP_FAIL;
     }
 
-    size_t patch_page_size = ((patch_size + PARTITION_PAGE_SIZE - 1) / PARTITION_PAGE_SIZE) * PARTITION_PAGE_SIZE;
-    const size_t ERASE_CHUNK_SIZE = 256 * 1024;  // Reduce OTA start delay
-    size_t erased = 0;
-
-    while (erased < patch_page_size) {
-        size_t chunk = patch_page_size - erased;
-        if (chunk > ERASE_CHUNK_SIZE) {
-            chunk = ERASE_CHUNK_SIZE;
-        }
-
-        if (esp_partition_erase_range(patch, erased, chunk) != ESP_OK) {
-            ESP_LOGE(TAG, "Partition Error: Could not erase '%s' region!", partition);
-            return ESP_FAIL;
-        }
-
-        erased += chunk;
+    size_t erase_size = ((patch_size + PARTITION_PAGE_SIZE - 1) / PARTITION_PAGE_SIZE) * PARTITION_PAGE_SIZE;
+    if (erase_size > patch->size) {
+        ESP_LOGE(TAG, "Partition Error: patch (%d bytes) larger than '%s'", patch_size, partition);
+        return -DELTA_OUT_OF_BOUNDS_ERROR;
     }
 
     writer->name = partition;
     writer->patch = patch;
     writer->size = patch_size;
     writer->offset = 0;
+    writer->erase_size = (int)erase_size;
+    writer->erased = 0;
 
     return ESP_OK;
+}
+
+int delta_partition_erase_step(delta_partition_writer_t *writer, int max_bytes)
+{
+    if (writer == NULL || writer->patch == NULL) {
+        return -DELTA_INVALID_ARGUMENT_ERROR;
+    }
+    if (writer->erased >= writer->erase_size) {
+        return 1;
+    }
+
+    int chunk = writer->erase_size - writer->erased;
+    if (chunk > max_bytes) {
+        chunk = max_bytes;
+    }
+    if (esp_partition_erase_range(writer->patch, writer->erased, chunk) != ESP_OK) {
+        ESP_LOGE(TAG, "Partition Error: Could not erase '%s' region!", writer->name);
+        return ESP_FAIL;
+    }
+    writer->erased += chunk;
+    return writer->erased >= writer->erase_size ? 1 : 0;
+}
+
+int delta_partition_init(delta_partition_writer_t *writer, const char *partition, int patch_size)
+{
+    int ret = delta_partition_begin(writer, partition, patch_size);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    while ((ret = delta_partition_erase_step(writer, 256 * 1024)) == 0) {
+    }
+    return ret < 0 ? ret : ESP_OK;
 }
 
 int delta_partition_write(delta_partition_writer_t *writer, const char *buf, int size)

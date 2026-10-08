@@ -12,6 +12,7 @@
 #include <LittleFS.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/semphr.h>
 
 class DiagnosticsController;
 
@@ -140,6 +141,21 @@ private:
     QueueHandle_t ui_event_queue;
     
     bool control_loop_paused_;      // Indicates control loop is suspended (e.g., purge confirmation)
+
+    // Time mode pause state
+    volatile bool grind_paused_;
+    volatile uint32_t pause_start_ms_;
+    volatile uint32_t total_pause_ms_;
+
+    // Serializes state changes: update() runs on the grind control task while
+    // start/stop/pause/resume arrive from the UI task and the Muse HTTP loop.
+    // Recursive because entry points call each other (e.g. update -> stop).
+    SemaphoreHandle_t control_mutex_ = nullptr;
+    struct ControlLock {
+        SemaphoreHandle_t m;
+        explicit ControlLock(SemaphoreHandle_t mutex) : m(mutex) { if (m) xSemaphoreTakeRecursive(m, portMAX_DELAY); }
+        ~ControlLock() { if (m) xSemaphoreGiveRecursive(m); }
+    };
     
     // Flash operation queue - thread-safe Core 0 → Core 1 communication
     QueueHandle_t flash_op_queue;
@@ -177,6 +193,9 @@ private:
     // Motor response latency - runtime configurable
     float motor_response_latency_ms;
 
+    // Coast ratio - runtime configurable
+    float coast_ratio_;
+
     // Grind freshness tracking
     bool grinder_purged_since_boot;      // Tracks if grinder has been used since boot (RAM only)
     uint64_t last_purge_runtime_ms;      // Runtime when last grind completed (persisted)
@@ -207,6 +226,11 @@ public:
     void start_additional_pulse(); // Start an additional 100ms pulse in time mode
     bool can_pulse() const; // Check if additional pulses are allowed
     int get_additional_pulse_count() const { return additional_pulse_count; }
+
+    // Time mode pause/resume
+    void pause_grind();
+    void resume_grind();
+    bool is_grind_paused() const { return grind_paused_; }
     
     // UI event system
     void set_ui_event_callback(void (*callback)(const GrindEventData&));
@@ -224,13 +248,16 @@ public:
     void queue_log_message(const char* format, ...); // Core 0: Queue formatted log message
     
     bool is_active() const;
+    bool is_finished() const { return phase == GrindPhase::COMPLETED || phase == GrindPhase::TIMEOUT; } // awaiting UI dismiss
     bool is_control_loop_paused() const { return control_loop_paused_; }
+    GrindPhase get_phase() const { return phase; }
     float get_target_weight() const { return target_weight; }
     uint32_t get_target_time_ms() const { return target_time_ms; }
     static constexpr const char* PREF_KEY_PRIME_ENABLED = "prime_enabled";
     static constexpr const char* PREF_KEY_GRINDER_MODE = "grinder_mode";
     static constexpr const char* PREF_KEY_GRINDER_AMOUNT_G = "grinder_amount_g";
     static constexpr const char* PREF_KEY_GRIND_FRESHNESS_HOURS = "freshness_hrs";
+    static constexpr const char* PREF_KEY_COAST_RATIO = "coast_ratio";
     static constexpr const char* PREF_KEY_LAST_GRIND_RUNTIME = "last_grind_ms";
     GrindMode get_mode() const { return mode; }
     const GrindSessionDescriptor& get_session_descriptor() const { return session_descriptor; }
@@ -259,6 +286,12 @@ public:
     void load_motor_latency();
     void save_motor_latency(float value);
 
+    // Coast ratio accessors
+    float get_coast_ratio() const { return coast_ratio_; }
+    void set_coast_ratio(float value);
+    void load_coast_ratio();
+    void save_coast_ratio(float value);
+
     // Grind freshness accessors
     bool get_grinder_purged_since_boot() const { return grinder_purged_since_boot; }
     uint64_t get_last_purge_runtime_ms() const { return last_purge_runtime_ms; }
@@ -284,10 +317,9 @@ private:
     // Internal state methods (moved from public to prevent polling)
     bool show_taring_text() const { return phase == GrindPhase::INITIALIZING || phase == GrindPhase::SETUP || phase == GrindPhase::TARING || phase == GrindPhase::TARE_CONFIRM; }
     bool is_completed() const { return phase == GrindPhase::COMPLETED; }
-    bool is_timeout() const { return phase == GrindPhase::TIMEOUT; } 
+    bool is_timeout() const { return phase == GrindPhase::TIMEOUT; }
     int get_progress_percent() const;
     float get_grind_time() const;
-    GrindPhase get_phase() const { return phase; }
     GrindPhase get_timeout_phase() const { return timeout_phase; }
     const char* get_phase_name(GrindPhase p = static_cast<GrindPhase>(-1)) const;
 

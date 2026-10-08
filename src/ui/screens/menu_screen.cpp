@@ -1,6 +1,9 @@
 #include "menu_screen.h"
+#include "../../system/simulation_mode.h"
 #include <Arduino.h>
 #include <algorithm>
+#include <LittleFS.h>
+#include <Preferences.h>
 #include "../../config/constants.h"
 #include "../../logging/grind_logging.h"
 #include "../../system/statistics_manager.h"
@@ -46,6 +49,8 @@ void MenuScreen::create(BluetoothManager* bluetooth, GrindController* grind_ctrl
     grinder_purge_amount_label = nullptr;
     grind_freshness_hours_slider = nullptr;
     grind_freshness_hours_label = nullptr;
+    coast_ratio_slider = nullptr;
+    coast_ratio_label = nullptr;
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
 
     // Create menu UI immediately at boot for instant access
@@ -144,12 +149,22 @@ void MenuScreen::create_menu_ui() {
     diagnostics_page = lv_menu_page_create(menu, "Diagnostics");
     create_diagnostics_page(diagnostics_page);
 
+    jolly_page = lv_menu_page_create(menu, "Jolly");
+    create_jolly_page(jolly_page);
+
+    simulation_page = lv_menu_page_create(menu, "Simulation");
+    create_simulation_page(simulation_page);
+
     // Create menu items grouped with separators
     create_separator(main_page, "Tools");
     scale_item = create_menu_item(main_page, "Scale");
     cal_button = create_menu_item(main_page, "Calibrate");
     autotune_button = create_menu_item(main_page, "Tune Pulses");
     motor_test_button = create_menu_item(main_page, "Motor Test");
+    lv_obj_t* jolly_item = create_menu_item(main_page, "Jolly");
+    lv_menu_set_load_page_event(menu, jolly_item, jolly_page);
+    lv_obj_t* simulation_item = create_menu_item(main_page, "Simulation");
+    lv_menu_set_load_page_event(menu, simulation_item, simulation_page);
 
     lv_menu_set_load_page_event(menu, scale_item, scale_page);
 
@@ -318,6 +333,22 @@ void MenuScreen::create_display_page(lv_obj_t* parent) {
         lv_obj_add_event_cb(brightness_screensaver_slider, EventBridgeLVGL::dispatch_event, LV_EVENT_RELEASED,
                            reinterpret_cast<void*>(static_cast<intptr_t>(ET::BRIGHTNESS_SCREENSAVER_SLIDER_RELEASED)));
     }
+
+    // Custom screensaver image toggles
+    create_separator(parent, "Custom Image");
+    create_description_label(parent, "Show uploaded image on startup or when display dims.");
+    create_toggle_row(parent, "Startup", &screensaver_startup_toggle);
+    create_toggle_row(parent, "Sleep", &screensaver_sleep_toggle);
+
+    if (screensaver_startup_toggle) {
+        lv_obj_add_event_cb(screensaver_startup_toggle, EventBridgeLVGL::dispatch_event, LV_EVENT_VALUE_CHANGED,
+                           reinterpret_cast<void*>(static_cast<intptr_t>(ET::SCREENSAVER_STARTUP_TOGGLE)));
+    }
+    if (screensaver_sleep_toggle) {
+        lv_obj_add_event_cb(screensaver_sleep_toggle, EventBridgeLVGL::dispatch_event, LV_EVENT_VALUE_CHANGED,
+                           reinterpret_cast<void*>(static_cast<intptr_t>(ET::SCREENSAVER_SLEEP_TOGGLE)));
+    }
+
 }
 
 
@@ -408,6 +439,16 @@ void MenuScreen::create_grind_mode_page(lv_obj_t* parent) {
     create_slider_row(parent, "Freshness", &grind_freshness_hours_label, &grind_freshness_hours_slider,
                      lv_color_hex(THEME_COLOR_ACCENT), 0, 8);  // 9 positions (0-8)
 
+    // Coast Compensation section
+    create_separator(parent, "Coast Compensation");
+    create_description_label(parent, "How much coast the system expects after motor stop. Higher values reduce overshoot.");
+
+    // Slider for coast ratio (0.70 to 1.50 in 0.05 steps)
+    const uint32_t coast_slider_min = static_cast<uint32_t>(GRIND_LATENCY_TO_COAST_RATIO_MIN * kCoastRatioSliderScale + 0.5f);
+    const uint32_t coast_slider_max = static_cast<uint32_t>(GRIND_LATENCY_TO_COAST_RATIO_MAX * kCoastRatioSliderScale + 0.5f);
+    create_slider_row(parent, "Coast Ratio", &coast_ratio_label, &coast_ratio_slider,
+                     lv_color_hex(THEME_COLOR_ACCENT), coast_slider_min, coast_slider_max);
+
     // Register events for the toggles (done here because widgets are created lazily)
     using ET = EventBridgeLVGL::EventType;
     if (grind_mode_swipe_toggle) {
@@ -433,6 +474,12 @@ void MenuScreen::create_grind_mode_page(lv_obj_t* parent) {
                            reinterpret_cast<void*>(static_cast<intptr_t>(ET::GRIND_FRESHNESS_HOURS_SLIDER)));
         lv_obj_add_event_cb(grind_freshness_hours_slider, EventBridgeLVGL::dispatch_event, LV_EVENT_RELEASED,
                            reinterpret_cast<void*>(static_cast<intptr_t>(ET::GRIND_FRESHNESS_HOURS_SLIDER_RELEASED)));
+    }
+    if (coast_ratio_slider) {
+        lv_obj_add_event_cb(coast_ratio_slider, EventBridgeLVGL::dispatch_event, LV_EVENT_VALUE_CHANGED,
+                           reinterpret_cast<void*>(static_cast<intptr_t>(ET::COAST_RATIO_SLIDER)));
+        lv_obj_add_event_cb(coast_ratio_slider, EventBridgeLVGL::dispatch_event, LV_EVENT_RELEASED,
+                           reinterpret_cast<void*>(static_cast<intptr_t>(ET::COAST_RATIO_SLIDER_RELEASED)));
     }
 }
 
@@ -468,6 +515,77 @@ void MenuScreen::create_scale_page(lv_obj_t* parent) {
         lv_obj_add_event_cb(scale_tare_button, EventBridgeLVGL::dispatch_event, LV_EVENT_CLICKED,
                            reinterpret_cast<void*>(static_cast<intptr_t>(ET::MENU_SCALE_TARE)));
     }
+}
+
+void MenuScreen::create_jolly_page(lv_obj_t* parent) {
+    lv_obj_set_layout(parent, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scroll_dir(parent, LV_DIR_VER);
+
+    create_description_label(parent, "The grinding animation. Tap Jolly or use the switch to preview.");
+
+    // 2x pixel-art preview; tapping it toggles straining.
+    jolly_preview.create(parent, 512);
+    lv_obj_t* preview = jolly_preview.get_root();
+    lv_obj_add_flag(preview, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(preview, jolly_preview_tapped_cb, LV_EVENT_CLICKED, this);
+
+    create_toggle_row(parent, "Straining", &jolly_strain_toggle);
+    lv_obj_add_event_cb(jolly_strain_toggle, jolly_strain_toggled_cb, LV_EVENT_VALUE_CHANGED, this);
+}
+
+void MenuScreen::jolly_preview_tapped_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    const bool straining = !self->jolly_preview.isStraining();
+    self->jolly_preview.setStraining(straining);
+    if (straining) lv_obj_add_state(self->jolly_strain_toggle, LV_STATE_CHECKED);
+    else lv_obj_clear_state(self->jolly_strain_toggle, LV_STATE_CHECKED);
+}
+
+void MenuScreen::jolly_strain_toggled_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    self->jolly_preview.setStraining(lv_obj_has_state(self->jolly_strain_toggle, LV_STATE_CHECKED));
+}
+
+void MenuScreen::create_simulation_page(lv_obj_t* parent) {
+    lv_obj_set_layout(parent, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(parent, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scroll_dir(parent, LV_DIR_VER);
+
+    create_description_label(parent,
+        SimulationMode::enabled()
+            ? "Simulation is ON. The motor is disabled and weight is simulated at 2 g/s while grinding."
+            : "Test without a motor or load cell. The motor stays off and weight rises at 2 g/s while grinding.");
+
+    create_toggle_row(parent, "Simulation", &simulation_toggle);
+    if (SimulationMode::saved()) {
+        lv_obj_add_state(simulation_toggle, LV_STATE_CHECKED);
+    }
+    lv_obj_add_event_cb(simulation_toggle, simulation_toggled_cb, LV_EVENT_VALUE_CHANGED, this);
+
+    simulation_apply_button = create_button(parent, "Restart to apply", lv_color_hex(THEME_COLOR_WARNING));
+    lv_obj_add_event_cb(simulation_apply_button, simulation_apply_cb, LV_EVENT_CLICKED, this);
+    // Only offered when the switch differs from how this boot is running.
+    if (SimulationMode::saved() == SimulationMode::enabled()) {
+        lv_obj_add_flag(simulation_apply_button, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void MenuScreen::simulation_toggled_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    const bool want = lv_obj_has_state(self->simulation_toggle, LV_STATE_CHECKED);
+    if (want == SimulationMode::enabled()) {
+        lv_obj_add_flag(self->simulation_apply_button, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(self->simulation_apply_button, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void MenuScreen::simulation_apply_cb(lv_event_t* e) {
+    auto* self = static_cast<MenuScreen*>(lv_event_get_user_data(e));
+    SimulationMode::save_and_restart(lv_obj_has_state(self->simulation_toggle, LV_STATE_CHECKED));
 }
 
 void MenuScreen::create_data_page(lv_obj_t* parent) {
@@ -617,6 +735,7 @@ void MenuScreen::show() {
     update_bluetooth_startup_toggle();
     update_logging_toggle();
     update_grind_mode_toggles();
+    update_screensaver_toggles();
 
     LOG_BLE("[%lums MENU] Menu screen shown successfully\n", millis());
 }
@@ -907,6 +1026,53 @@ void MenuScreen::update_grind_freshness_hours_label(float hours) {
         }
         lv_label_set_text(grind_freshness_hours_label, buffer);
     }
+}
+
+void MenuScreen::update_coast_ratio_label(float ratio) {
+    if (coast_ratio_label) {
+        char buffer[24];
+        int percent = static_cast<int>(ratio * 100.0f + 0.5f);
+        snprintf(buffer, sizeof(buffer), "Coast Ratio: %d%%", percent);
+        lv_label_set_text(coast_ratio_label, buffer);
+    }
+}
+
+void MenuScreen::update_screensaver_toggles() {
+    bool image_exists = LittleFS.exists(BLE_IMAGE_FILENAME);
+
+    Preferences prefs;
+    prefs.begin("screensaver", true);
+    bool startup_on = prefs.getBool("startup", false);
+    bool sleep_on = prefs.getBool("sleep", false);
+    prefs.end();
+
+    if (screensaver_startup_toggle) {
+        if (startup_on && image_exists) {
+            lv_obj_add_state(screensaver_startup_toggle, LV_STATE_CHECKED);
+        } else {
+            lv_obj_clear_state(screensaver_startup_toggle, LV_STATE_CHECKED);
+        }
+        // Disable toggles if no image is uploaded
+        if (image_exists) {
+            lv_obj_clear_state(screensaver_startup_toggle, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(screensaver_startup_toggle, LV_STATE_DISABLED);
+        }
+    }
+
+    if (screensaver_sleep_toggle) {
+        if (sleep_on && image_exists) {
+            lv_obj_add_state(screensaver_sleep_toggle, LV_STATE_CHECKED);
+        } else {
+            lv_obj_clear_state(screensaver_sleep_toggle, LV_STATE_CHECKED);
+        }
+        if (image_exists) {
+            lv_obj_clear_state(screensaver_sleep_toggle, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(screensaver_sleep_toggle, LV_STATE_DISABLED);
+        }
+    }
+
 }
 
 lv_obj_t* MenuScreen::create_separator(lv_obj_t* parent, const char* text) {
@@ -1203,4 +1369,20 @@ void MenuScreen::update_grind_mode_toggles() {
     }
 
     update_grind_freshness_hours_label(freshness_hours);
+
+    // Load and set coast ratio
+    float coast_ratio = GRIND_LATENCY_TO_COAST_RATIO_DEFAULT;
+    if (grind_controller) {
+        coast_ratio = grind_controller->get_coast_ratio();
+    }
+
+    if (coast_ratio_slider) {
+        int slider_value = static_cast<int>(coast_ratio * kCoastRatioSliderScale + 0.5f);
+        const int coast_slider_min = static_cast<int>(GRIND_LATENCY_TO_COAST_RATIO_MIN * kCoastRatioSliderScale + 0.5f);
+        const int coast_slider_max = static_cast<int>(GRIND_LATENCY_TO_COAST_RATIO_MAX * kCoastRatioSliderScale + 0.5f);
+        slider_value = std::clamp(slider_value, coast_slider_min, coast_slider_max);
+        lv_slider_set_value(coast_ratio_slider, slider_value, LV_ANIM_OFF);
+    }
+
+    update_coast_ratio_label(coast_ratio);
 }

@@ -1,9 +1,8 @@
 #include "WeightSensor.h"
 #include "../config/constants.h"
 #include "hx711_driver.h"
-#if DEBUG_ENABLE_LOADCELL_MOCK
 #include "mock_hx711_driver.h"
-#endif
+#include "../system/simulation_mode.h"
 #include <Arduino.h>
 #include <math.h>
 
@@ -21,11 +20,11 @@
 
 WeightSensor::WeightSensor() {
     // Initialize calibration parameters
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    cal_factor = DEBUG_MOCK_CAL_FACTOR;
-#else
-    cal_factor = USER_DEFAULT_CALIBRATION_FACTOR;
-#endif
+    if (SimulationMode::enabled()) {
+        cal_factor = DEBUG_MOCK_CAL_FACTOR;
+    } else {
+        cal_factor = USER_DEFAULT_CALIBRATION_FACTOR;
+    }
     tare_offset = 0;
     
     // Initialize current readings
@@ -74,11 +73,13 @@ void WeightSensor::init(Preferences* preferences) {
     LOG_BLE("Initializing WeightSensor configuration and filters...\n");
     
     // Create load cell driver instance based on configuration
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    adc_driver = std::make_unique<MockHX711Driver>();
-#else
-    adc_driver = std::make_unique<HX711Driver>(HW_LOADCELL_SCK_PIN, HW_LOADCELL_DOUT_PIN);
-#endif
+    if (SimulationMode::enabled()) {
+        adc_driver = std::make_unique<MockHX711Driver>();
+        cal_factor = DEBUG_MOCK_CAL_FACTOR;
+        tare_offset = static_cast<int32_t>(DEBUG_MOCK_BASELINE_RAW);  // read 0.0g at boot
+    } else {
+        adc_driver = std::make_unique<HX711Driver>(HW_LOADCELL_SCK_PIN, HW_LOADCELL_DOUT_PIN);
+    }
     if (!adc_driver) {
         LOG_BLE("ERROR: Failed to create ADC driver\n");
         return;
@@ -173,34 +174,34 @@ bool WeightSensor::validate_hardware() {
     
     bool valid = adc_driver->validate_hardware();
     
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    detected_sample_rate_sps_ = HW_LOADCELL_SAMPLE_RATE_SPS;
-    if (valid && hardware_fault_ == HardwareFault::NONE) {
-        hardware_fault_ = HardwareFault::NONE;
-    }
-    return valid;
-#else
-    detected_sample_rate_sps_ = HW_LOADCELL_SAMPLE_RATE_SPS;
-    HX711Driver* hx_driver = static_cast<HX711Driver*>(adc_driver.get());
-    detected_sample_rate_sps_ = hx_driver ? hx_driver->get_estimated_sample_rate_sps() : HW_LOADCELL_SAMPLE_RATE_SPS;
-    
-    if (!valid) {
-        return false;
-    }
-    
-    constexpr float kSampleRateUpperThreshold = HW_LOADCELL_SAMPLE_RATE_SPS * 4.0f; // Expect 10 SPS; anything >40 SPS is invalid
-    if (detected_sample_rate_sps_ > kSampleRateUpperThreshold) {
-        LOG_BLE("ERROR: HX711 sample rate detected at %.1f SPS (expected ≈ %d SPS)\n",
-                detected_sample_rate_sps_, HW_LOADCELL_SAMPLE_RATE_SPS);
-        if (hardware_fault_ == HardwareFault::NONE) {
-            hardware_fault_ = HardwareFault::INVALID_SAMPLE_RATE;
+    if (SimulationMode::enabled()) {
+        detected_sample_rate_sps_ = HW_LOADCELL_SAMPLE_RATE_SPS;
+        if (valid && hardware_fault_ == HardwareFault::NONE) {
+            hardware_fault_ = HardwareFault::NONE;
         }
-        return false;
-    }
+        return valid;
+    } else {
+        detected_sample_rate_sps_ = HW_LOADCELL_SAMPLE_RATE_SPS;
+        HX711Driver* hx_driver = static_cast<HX711Driver*>(adc_driver.get());
+        detected_sample_rate_sps_ = hx_driver ? hx_driver->get_estimated_sample_rate_sps() : HW_LOADCELL_SAMPLE_RATE_SPS;
     
-    hardware_fault_ = HardwareFault::NONE;
-    return true;
-#endif
+        if (!valid) {
+            return false;
+        }
+    
+        constexpr float kSampleRateUpperThreshold = HW_LOADCELL_SAMPLE_RATE_SPS * 4.0f; // Expect 10 SPS; anything >40 SPS is invalid
+        if (detected_sample_rate_sps_ > kSampleRateUpperThreshold) {
+            LOG_BLE("ERROR: HX711 sample rate detected at %.1f SPS (expected ≈ %d SPS)\n",
+                    detected_sample_rate_sps_, HW_LOADCELL_SAMPLE_RATE_SPS);
+            if (hardware_fault_ == HardwareFault::NONE) {
+                hardware_fault_ = HardwareFault::INVALID_SAMPLE_RATE;
+            }
+            return false;
+        }
+    
+        hardware_fault_ = HardwareFault::NONE;
+        return true;
+    }
 }
 
 // New hardware abstraction methods
@@ -266,10 +267,10 @@ void WeightSensor::tare() {
 }
 
 void WeightSensor::calibrate(float known_weight) {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    LOG_BLE("Mock load cell: calibration skipped (fixed factor %.2f)\n", cal_factor);
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        LOG_BLE("Mock load cell: calibration skipped (fixed factor %.2f)\n", cal_factor);
+        return;
+    }
     if (known_weight <= 0) {
         LOG_BLE("ERROR: Invalid calibration weight\n");
         return;
@@ -313,12 +314,12 @@ void WeightSensor::calibrate(float known_weight) {
 }
 
 void WeightSensor::set_calibration_factor(float factor) {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    cal_factor = DEBUG_MOCK_CAL_FACTOR;
-    LOG_BLE("Mock load cell: ignoring calibration update, using fixed factor: %.2f\n", cal_factor);
-#else
-    cal_factor = factor;
-#endif
+    if (SimulationMode::enabled()) {
+        cal_factor = DEBUG_MOCK_CAL_FACTOR;
+        LOG_BLE("Mock load cell: ignoring calibration update, using fixed factor: %.2f\n", cal_factor);
+    } else {
+        cal_factor = factor;
+    }
 }
 
 void WeightSensor::set_zero_offset(int32_t offset) {
@@ -527,29 +528,29 @@ bool WeightSensor::is_data_ready() const {
 }
 
 void WeightSensor::save_calibration() {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    LOG_BLE("Mock load cell: calibration save skipped (fixed factor).\n");
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        LOG_BLE("Mock load cell: calibration save skipped (fixed factor).\n");
+        return;
+    }
     if (prefs) {
         prefs->putFloat("hx_cal", cal_factor);
     }
 }
 
 void WeightSensor::save_calibration_weight(float weight) {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    LOG_BLE("Mock load cell: calibration weight save skipped.\n");
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        LOG_BLE("Mock load cell: calibration weight save skipped.\n");
+        return;
+    }
     if (prefs) {
         prefs->putFloat("hx_wt", weight);
     }
 }
 
 float WeightSensor::get_saved_calibration_weight() {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    return USER_CALIBRATION_REFERENCE_WEIGHT_G;
-#endif
+    if (SimulationMode::enabled()) {
+        return USER_CALIBRATION_REFERENCE_WEIGHT_G;
+    }
     if (prefs) {
         return prefs->getFloat("hx_wt", USER_CALIBRATION_REFERENCE_WEIGHT_G);
     }
@@ -557,11 +558,12 @@ float WeightSensor::get_saved_calibration_weight() {
 }
 
 void WeightSensor::load_calibration() {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    cal_factor = DEBUG_MOCK_CAL_FACTOR;
-    LOG_BLE("Mock load cell: using fixed calibration factor: %.2f\n", cal_factor);
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        cal_factor = DEBUG_MOCK_CAL_FACTOR;
+        tare_offset = static_cast<int32_t>(DEBUG_MOCK_BASELINE_RAW);  // read 0.0g at boot
+        LOG_BLE("Mock load cell: using fixed calibration factor: %.2f\n", cal_factor);
+        return;
+    }
     if (prefs) {
         float saved_factor = prefs->getFloat("hx_cal", USER_DEFAULT_CALIBRATION_FACTOR);
         
@@ -582,11 +584,11 @@ void WeightSensor::load_calibration() {
 }
 
 void WeightSensor::clear_calibration_data() {
-#if DEBUG_ENABLE_LOADCELL_MOCK
-    cal_factor = DEBUG_MOCK_CAL_FACTOR;
-    LOG_BLE("Mock load cell: calibration data reset to fixed factor.\n");
-    return;
-#endif
+    if (SimulationMode::enabled()) {
+        cal_factor = DEBUG_MOCK_CAL_FACTOR;
+        LOG_BLE("Mock load cell: calibration data reset to fixed factor.\n");
+        return;
+    }
     if (prefs) {
         LOG_BLE("Clearing corrupted calibration data...\n");
         prefs->remove("hx_cal");
@@ -597,6 +599,9 @@ void WeightSensor::clear_calibration_data() {
 }
 
 bool WeightSensor::is_calibrated() const {
+    if (SimulationMode::enabled()) {
+        return true;  // fixed simulated calibration factor
+    }
     if (!calibration_flag_cached_) {
         Preferences load_cell_prefs;
         bool prefs_opened = false;

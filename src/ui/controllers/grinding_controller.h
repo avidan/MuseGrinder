@@ -38,6 +38,11 @@ private:
     void enter_grind_timeout_state();
     void enter_menu_state();
 
+    void start_selected_profile_grind();
+    void show_grind_blocked(const char* reason);
+    static void confirm_start_timer_cb(lv_timer_t* timer);
+    static void hide_message_timer_cb(lv_timer_t* timer);
+
     void start_grind_complete_timer();
     void start_grind_timeout_timer();
     void cancel_timers();
@@ -54,6 +59,7 @@ private:
     lv_obj_t* pulse_icon_ = nullptr;
     lv_timer_t* grind_complete_timer_ = nullptr;
     lv_timer_t* grind_timeout_timer_ = nullptr;
+    lv_timer_t* confirm_start_timer_ = nullptr;  // re-checks the portafilter before starting
     bool chart_updates_enabled_ = false;
     float final_grind_weight_ = 0.0f;
     int final_grind_progress_ = 0;

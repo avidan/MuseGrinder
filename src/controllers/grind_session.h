@@ -9,4 +9,5 @@ struct GrindSessionDescriptor {
     uint32_t target_time_ms = 0;     // milliseconds
     float tolerance = 0.0f;          // grams
     uint8_t profile_id = 0;          // active profile index
+    float latency_to_coast_ratio = 1.0f; // user coast ratio in effect for this session
 };

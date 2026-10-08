@@ -1,4 +1,6 @@
 #include "ui_manager.h"
+#include "../system/simulation_mode.h"
+#include "../muse/muse_wifi.h"
 #include <Arduino.h>
 #include <Preferences.h>
 #include <cmath>
@@ -57,8 +59,24 @@ void UIManager::init(HardwareManager* hw_mgr, StateMachine* sm,
     
     // Register grind event callback
     grind_controller->set_ui_event_callback(GrindingUIController::dispatch_event);
-    
-    
+
+    // Show startup screensaver only on normal ready boot, never over boot warnings.
+    if (screensaver_controller_ &&
+        state_machine &&
+        state_machine->is_state(UIState::READY) &&
+        screensaver_controller_->is_startup_enabled() &&
+        screensaver_controller_->has_image()) {
+        screensaver_controller_->show();
+        uint32_t startup_timeout_ms = screensaver_controller_->get_startup_timeout_ms();
+        lv_timer_create([](lv_timer_t* t) {
+            auto* sc = static_cast<ScreensaverController*>(lv_timer_get_user_data(t));
+            if (sc && sc->is_visible()) {
+                sc->hide();
+            }
+            lv_timer_delete(t);
+        }, startup_timeout_ms, screensaver_controller_.get());
+    }
+
     initialized = true;
 }
 
@@ -66,11 +84,11 @@ void UIManager::create_ui() {
     // Set background style
     static lv_style_t style_screen;
     lv_style_init(&style_screen);
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-    lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND_MOCK));
-#else
-    lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND));
-#endif
+    if (SimulationMode::enabled()) {
+        lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND_MOCK));
+    } else {
+        lv_style_set_bg_color(&style_screen, lv_color_hex(THEME_COLOR_BACKGROUND));
+    }
     lv_obj_add_style(lv_scr_act(), &style_screen, 0);
 
     // Create all screens
@@ -98,6 +116,14 @@ void UIManager::create_ui() {
     if (status_indicator_controller_) {
         status_indicator_controller_->build();
     }
+
+    // Created last so it sits above the status indicator on the top layer.
+    grind_jolly_overlay.create([](void* ctx) {
+        auto* ui = static_cast<UIManager*>(ctx);
+        if (ui->grinding_controller_) {
+            ui->grinding_controller_->handle_grind_button();  // stop / dismiss
+        }
+    }, this);
     
     // Set up initial state
     ready_screen.hide();
@@ -124,6 +150,22 @@ void UIManager::update() {
 
     if (screen_timeout_controller_) {
         screen_timeout_controller_->update();
+    }
+
+    // Jolly strains only while the motor is actually running.
+    if (hardware_manager && hardware_manager->get_grinder() &&
+        state_machine && state_machine->is_state(UIState::GRINDING)) {
+        grind_jolly_overlay.set_motor_running(hardware_manager->get_grinder()->is_grinding());
+    }
+
+    // Next dose set remotely (Muse POST /dose): apply to the selected profile.
+    float next_dose_g;
+    if (profile_controller && museTakePendingDose(&next_dose_g)) {
+        profile_controller->set_profile_weight(profile_controller->get_current_profile(), next_dose_g);
+        if (ready_controller_) {
+            ready_controller_->refresh_profiles();
+        }
+        LOG_BLE("[MUSE] Next dose set to %.1fg (%s)\n", next_dose_g, profile_controller->get_current_name());
     }
 
     bool ota_cycle_consumed = false;
@@ -194,6 +236,7 @@ void UIManager::switch_to_state(UIState new_state) {
     autotune_screen.hide();
     ota_screen.hide();
     ota_update_failed_screen.hide();
+    grind_jolly_overlay.hide();
 
     switch (new_state) {
         case UIState::READY:
@@ -212,17 +255,21 @@ void UIManager::switch_to_state(UIState new_state) {
             edit_screen.update_target(edit_target);
             break;
 
+        // The full-screen Jolly replaces the grinding screen here. The screen
+        // stays hidden underneath so its live updates don't force redraws
+        // of the overlay (which starved core 1 and the Muse HTTP server).
         case UIState::GRINDING:
-            LOG_UI_DEBUG("[%lums UI_SCREEN_VISIBLE] GRINDING screen showing\n", millis());
-            grinding_screen.show();
+            LOG_UI_DEBUG("[%lums UI_SCREEN_VISIBLE] GRINDING overlay showing\n", millis());
+            grind_jolly_overlay.show_straining();
             break;
 
         case UIState::GRIND_COMPLETE:
-            grinding_screen.show();
+            grind_jolly_overlay.show_dancing();  // tap to dismiss
             break;
 
         case UIState::GRIND_TIMEOUT:
             grinding_screen.show();
+            grinding_screen.set_straining(false);
             break;
 
         case UIState::MENU:
@@ -315,12 +362,18 @@ void UIManager::init_controllers() {
     confirm_controller_ = std::make_unique<ConfirmUIController>(this);
     ota_data_export_controller_ = std::make_unique<OtaDataExportController>(this);
     screen_timeout_controller_ = std::make_unique<ScreenTimeoutController>(this);
+    screensaver_controller_ = std::make_unique<ScreensaverController>();
     jog_adjust_controller_ = std::make_unique<JogAdjustController>(this);
     diagnostics_controller_ = std::make_unique<DiagnosticsController>();
 
     // Initialize diagnostics controller
     if (diagnostics_controller_) {
         diagnostics_controller_->init(hardware_manager);
+    }
+
+    // Wire screensaver controller into screen timeout controller
+    if (screen_timeout_controller_ && screensaver_controller_) {
+        screen_timeout_controller_->set_screensaver_controller(screensaver_controller_.get());
     }
 }
 
@@ -348,11 +401,7 @@ void UIManager::set_background_active(bool active) {
         style_initialized = true;
     }
 
-#if defined(DEBUG_ENABLE_LOADCELL_MOCK) && (DEBUG_ENABLE_LOADCELL_MOCK != 0)
-    lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND_MOCK);
-#else
-    lv_color_t inactive_color = lv_color_hex(THEME_COLOR_BACKGROUND);
-#endif
+    lv_color_t inactive_color = SimulationMode::enabled() ? lv_color_hex(THEME_COLOR_BACKGROUND_MOCK) : lv_color_hex(THEME_COLOR_BACKGROUND);
     lv_color_t bg_color = active ? lv_color_hex(THEME_COLOR_GRINDER_ACTIVE) : inactive_color;
     lv_style_set_bg_color(&style_bg, bg_color);
     lv_obj_add_style(lv_scr_act(), &style_bg, 0);

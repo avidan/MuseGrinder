@@ -28,7 +28,11 @@
 
 /** Color depth: 1 (I1), 8 (L8), 16 (RGB565), 24 (RGB888), 32 (XRGB8888) */
 #define LV_COLOR_DEPTH 16
+#ifdef SMART_GRIND_SIM
+#define LV_COLOR_16_SWAP 0
+#else
 #define LV_COLOR_16_SWAP 1
+#endif
 /*=========================
    STDLIB WRAPPER SETTINGS
  *=========================*/
@@ -40,7 +44,11 @@
  * - LV_STDLIB_RTTHREAD:    RT-Thread implementation
  * - LV_STDLIB_CUSTOM:      Implement the functions externally
  */
-#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB
+#ifdef SMART_GRIND_SIM
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CLIB    /* desktop simulator: plain malloc */
+#else
+#define LV_USE_STDLIB_MALLOC    LV_STDLIB_CUSTOM  /* PSRAM-backed, see src/ui/lv_mem_psram.cpp */
+#endif
 
 /** Possible values
  * - LV_STDLIB_BUILTIN:     LVGL's built in implementation
@@ -107,7 +115,11 @@
  * - LV_OS_MQX
  * - LV_OS_SDL2
  * - LV_OS_CUSTOM */
+#ifdef SMART_GRIND_SIM
+#define LV_USE_OS   LV_OS_WINDOWS
+#else
 #define LV_USE_OS   LV_OS_NONE
+#endif
 
 #if LV_USE_OS == LV_OS_CUSTOM
     #define LV_OS_CUSTOM_INCLUDE <stdint.h>
@@ -1296,7 +1308,11 @@
 #endif
 
 /** LVGL Windows backend */
+#ifdef SMART_GRIND_SIM
+#define LV_USE_WINDOWS    1
+#else
 #define LV_USE_WINDOWS    0
+#endif
 
 /** LVGL UEFI backend */
 #define LV_USE_UEFI 0

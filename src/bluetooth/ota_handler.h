@@ -50,6 +50,7 @@ enum BLEPowerState {
 class OTAHandler {
 private:
     bool ota_in_progress;
+    bool preparing;  // START accepted, patch partition still being erased
     uint32_t patch_size;
     uint32_t received_size;
     BLEOTAStatus current_status;
@@ -68,7 +69,6 @@ private:
     
     void reduce_power_for_ble();
     void restore_normal_power();
-    bool start_update();
     bool finalize_update();
     
 public:
@@ -122,7 +122,14 @@ public:
     /**
      * Check if OTA is in progress
      */
-    bool is_ota_active() const { return ota_in_progress; }
+    bool is_ota_active() const { return ota_in_progress || preparing; }
+
+    /**
+     * Erase the patch partition incrementally after start_ota(). Call from
+     * the Bluetooth task loop; each call erases one chunk. Returns true when
+     * the status changed (RECEIVING when ready, ERROR on failure).
+     */
+    bool service_preparation();
     
     /**
      * Get current firmware build number

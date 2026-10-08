@@ -8,6 +8,7 @@
 #include "screens/ready_screen.h"
 #include "screens/edit_screen.h"
 #include "screens/grinding_screen.h"
+#include "screens/grind_jolly_overlay.h"
 #include "screens/menu_screen.h"
 #include "screens/calibration_screen.h"
 #include "screens/confirm_screen.h"
@@ -25,6 +26,7 @@
 #include "controllers/ota_data_export_controller.h"
 #include "controllers/ready_controller.h"
 #include "controllers/screen_timeout_controller.h"
+#include "controllers/screensaver_controller.h"
 #include "controllers/menu_controller.h"
 #include "controllers/status_indicator_controller.h"
 #include "../system/state_machine.h"
@@ -95,6 +97,7 @@ private:
     std::unique_ptr<ConfirmUIController> confirm_controller_;
     std::unique_ptr<OtaDataExportController> ota_data_export_controller_;
     std::unique_ptr<ScreenTimeoutController> screen_timeout_controller_;
+    std::unique_ptr<ScreensaverController> screensaver_controller_;
     std::unique_ptr<JogAdjustController> jog_adjust_controller_;
     std::unique_ptr<DiagnosticsController> diagnostics_controller_;
 
@@ -102,6 +105,7 @@ public:
     ReadyScreen ready_screen;
     EditScreen edit_screen;
     GrindingScreen grinding_screen;
+    GrindJollyOverlay grind_jolly_overlay;
     MenuScreen menu_screen;
     CalibrationScreen calibration_screen;
     ConfirmScreen confirm_screen;

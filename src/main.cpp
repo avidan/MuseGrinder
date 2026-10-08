@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <Preferences.h>
 #include <esp_system.h>
 #include "hardware/hardware_manager.h"
 #include "system/state_machine.h"
@@ -8,12 +9,15 @@
 #include "controllers/grind_controller.h"
 #include "ui/ui_manager.h"
 #include "config/constants.h"
+#include "system/screensaver_settings.h"
 #include "bluetooth/manager.h"
 #include "tasks/task_manager.h"
 #include "tasks/weight_sampling_task.h"
 #include "tasks/grind_control_task.h"
 #include "tasks/file_io_task.h"
 #include "muse/muse_wifi.h"
+#include "system/simulation_mode.h"
+#include "controllers/portafilter_detector.h"
 
 HardwareManager hardware_manager;
 StateMachine state_machine;
@@ -32,29 +36,58 @@ static uint32_t core1_cycle_time_max_ms = 0;
 static uint32_t core1_last_heartbeat_time = 0;
 #endif
 
+namespace {
+
+float load_startup_display_brightness() {
+    Preferences prefs;
+    float brightness = USER_SCREEN_BRIGHTNESS_NORMAL;
+    if (prefs.begin("brightness", true)) {
+        brightness = prefs.getFloat("normal", USER_SCREEN_BRIGHTNESS_NORMAL);
+        prefs.end();
+    }
+
+    if (brightness < 0.15f) {
+        brightness = 0.15f;
+    }
+    return brightness;
+}
+
+void draw_early_startup_splash_if_ready() {
+    if (!state_machine.is_state(UIState::READY) ||
+        !ScreensaverSettings::is_startup_enabled() ||
+        !LittleFS.exists(BLE_IMAGE_FILENAME)) {
+        return;
+    }
+
+    DisplayManager* display = hardware_manager.get_display();
+    if (!display || !display->is_initialized()) {
+        return;
+    }
+
+    display->set_brightness(load_startup_display_brightness());
+
+    if (display->draw_rgb565_file(BLE_IMAGE_FILENAME,
+                                  HW_DISPLAY_WIDTH_PX,
+                                  HW_DISPLAY_HEIGHT_PX)) {
+        LOG_BLE("[STARTUP] Early screensaver splash drawn\n");
+    }
+}
+
+}  // namespace
+
 void setup() {
+    CrashLog::init();  // first: keeps the log from before the last reset
     Serial.begin(HW_SERIAL_BAUD_RATE);
 #ifdef UI_DEBUG_SERIAL_DELAY_MS
     delay(UI_DEBUG_SERIAL_DELAY_MS);
 #endif
     
     // Log reset reason to help diagnose unexpected resets/freeze scenarios
-    esp_reset_reason_t rr = esp_reset_reason();
-    const char* rr_str = "UNKNOWN";
-    switch (rr) {
-        case ESP_RST_POWERON: rr_str = "POWERON"; break;
-        case ESP_RST_EXT: rr_str = "EXT (Reset Pin)"; break;
-        case ESP_RST_SW: rr_str = "SW (esp_restart)"; break;
-        case ESP_RST_PANIC: rr_str = "PANIC (Exception)"; break;
-        case ESP_RST_INT_WDT: rr_str = "INT_WDT"; break;
-        case ESP_RST_TASK_WDT: rr_str = "TASK_WDT"; break;
-        case ESP_RST_WDT: rr_str = "WDT"; break;
-        case ESP_RST_DEEPSLEEP: rr_str = "DEEPSLEEP"; break;
-        case ESP_RST_BROWNOUT: rr_str = "BROWNOUT"; break;
-        case ESP_RST_SDIO: rr_str = "SDIO"; break;
-        default: break;
+    LOG_BLE("[STARTUP] Reset reason: %s (%d)\n", CrashLog::reset_reason(), (int)esp_reset_reason());
+    if (CrashLog::previous_log()[0]) {
+        LOG_BLE("[STARTUP] Log from before the reset kept (%u bytes) - read with grinder.py diagnostics\n",
+                (unsigned)strlen(CrashLog::previous_log()));
     }
-    LOG_BLE("[STARTUP] Reset reason: %s (%d)\n", rr_str, rr);
     
     
     // Early startup heartbeat - helps capture initialization sequence
@@ -67,6 +100,8 @@ void setup() {
         LOG_BLE("✅ LittleFS mounted successfully\n");
     }
     
+    // Before hardware init: picks the simulated load cell and disables the motor output.
+    SimulationMode::load();
     hardware_manager.init();
     profile_controller.init(hardware_manager.get_preferences());
     statistics_manager.init(hardware_manager.get_preferences());
@@ -83,16 +118,19 @@ void setup() {
 
     // Check calibration status to determine initial screen
     bool is_calibrated = hardware_manager.get_weight_sensor()->is_calibrated();
+    GrindMode boot_grind_mode = profile_controller.get_grind_mode();
 
     if (ota_failed) {
         LOG_BLE("BOOT: Starting in OTA failure state for expected build %s\n", failed_ota_build.c_str());
         state_machine.init(UIState::OTA_UPDATE_FAILED);
-    } else if (!is_calibrated) {
+    } else if (!is_calibrated && boot_grind_mode != GrindMode::TIME) {
         LOG_BLE("BOOT: Device not calibrated - starting in CALIBRATION state\n");
         state_machine.init(UIState::CALIBRATION);
     } else {
         state_machine.init(UIState::READY);
     }
+
+    draw_early_startup_splash_if_ready();
     
     ui_manager.init(&hardware_manager, &state_machine, &profile_controller, &grind_controller, &bluetooth_manager);
     
@@ -141,12 +179,14 @@ void setup() {
     file_io_task.init(task_manager.get_file_io_queue());
 
     // Muse gadget: WiFi + HTTP API for Muse (Home Link)
-    museWifiSetup(&grind_controller, hardware_manager.get_load_cell());
+    portafilter_detector.init(hardware_manager.get_load_cell());
+    museWifiSetup(&grind_controller, hardware_manager.get_load_cell(), &profile_controller);
     
     LOG_BLE("✅ All task modules initialized\n");
 }
 
 void loop() {
+    portafilter_detector.update(); // before Muse: /target and /status read it
     museWifiLoop(); // Muse gadget HTTP API
 
 
