@@ -28,7 +28,7 @@ extern GrindController grind_controller;
 // stack is only 1KB (prebuilt sdkconfig). With heap poisoning, an interrupt
 // landing mid-malloc overflowed that stack and tripped the end-of-stack
 // watchpoint ("Unhandled debug exception" in esp_intr_alloc). Run controller
-// init/deinit in a short-lived core-0 task with a real stack instead.
+// init in a short-lived core-0 task with a real stack instead.
 static void run_on_ble_core(void (*fn)(void*), void* arg) {
     if (xPortGetCoreID() == CONFIG_BT_CTRL_PINNED_TO_CORE) {
         fn(arg);
@@ -164,7 +164,18 @@ void BluetoothManager::enable(unsigned long timeout_ms) {
     ota_handler.enable_ble_power_mode();
     enable_time = millis();
     last_disconnect_time = enable_time; // Start disconnected timeout from enable time
-    
+
+    if (stack_initialized_) {
+        // Stack and services already exist from an earlier enable: advertise again.
+        ble_enabled = true;
+        set_ota_status(BLE_OTA_READY);
+        refresh_system_info();
+        sessions_info_dirty = true;
+        start_advertising();
+        log("Bluetooth: Ready - device is advertising (%lum timeout)\n", timeout_minutes);
+        return;
+    }
+
     // Initialize BLE with delays for power stability
     run_on_ble_core([](void*) { BLEDevice::init(BLE_DEVICE_NAME); }, nullptr);
     
@@ -318,6 +329,7 @@ void BluetoothManager::enable(unsigned long timeout_ms) {
     delay(BLE_INIT_ADVERTISING_DELAY_MS);
     
     ble_enabled = true;
+    stack_initialized_ = true;
     set_ota_status(BLE_OTA_READY);
     
     // Initialize system information
@@ -371,27 +383,12 @@ void BluetoothManager::disable() {
         delay(10);
     }
 
-    log("Bluetooth: Deinitializing BLE stack...\n");
-    run_on_ble_core([](void*) { BLEDevice::deinit(false); }, nullptr);
-    delay(BLE_SHUTDOWN_DEINIT_DELAY_MS);
-    ble_server = nullptr;
-    ota_service = nullptr;
-    data_service = nullptr;
-    debug_service = nullptr;
-    sysinfo_service = nullptr;
-    ota_data_characteristic = nullptr;
-    ota_control_characteristic = nullptr;
-    ota_status_characteristic = nullptr;
-    build_number_characteristic = nullptr;
-    data_control_characteristic = nullptr;
-    data_transfer_characteristic = nullptr;
-    data_status_characteristic = nullptr;
-    debug_rx_characteristic = nullptr;
-    debug_tx_characteristic = nullptr;
-    sysinfo_system_characteristic = nullptr;
-    sysinfo_performance_characteristic = nullptr;
-    sysinfo_hardware_characteristic = nullptr;
-    sysinfo_sessions_characteristic = nullptr;
+    // Keep the stack and services (see stack_initialized_); just drop any
+    // client. Advertising is already stopped, so nobody can reconnect.
+    if (ble_server && ble_server->getConnectedCount() > 0) {
+        ble_server->disconnect(ble_server->getConnId());
+        delay(BLE_SHUTDOWN_DEINIT_DELAY_MS);
+    }
     debug_stream_active = false;
     
     // Restore normal power settings

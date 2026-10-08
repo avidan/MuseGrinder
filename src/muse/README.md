@@ -33,10 +33,11 @@ closes once the grinder joins. Thereafter: `http://musegrinder.local`.
 
 | Method | Path | Effect |
 |---|---|---|
-| GET | `/status` | `{grinding, weight_g, target_g, next_dose_g, profile, mode, last_result, simulated, firmware}` |
+| GET | `/status` | `{grinding, weight_g, target_g, next_dose_g, profile, mode, last_result, simulated, build, board, reset_reason, firmware}` |
 | POST | `/target` | Body `{"g": 18.5}` — starts a weight-based grind (1–100g); 409 if a grind is already active. A finished grind still on screen is dismissed first |
 | POST | `/dose` | Body `{"g": 18.5}` — sets the next dose on the selected profile without grinding (5–100g, saved to NVS, shown on the dose screen); 409 while grinding |
 | POST | `/stop` | Stops the active grind |
+| POST | `/ota` | Firmware update (multipart `firmware`, header `X-OTA-Password`); use `tools/wifi_upload.py` |
 | GET | `/last` | `{valid, final_weight_g, target_g, result}` for the last completed grind |
 
 ## Notes

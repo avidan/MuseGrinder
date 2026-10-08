@@ -105,6 +105,10 @@ private:
     // Connection state
     volatile bool device_connected;
     volatile bool ble_enabled;
+    // The BLE stack and GATT services are created once per boot. Arduino's
+    // BLEDevice::deinit(false) keeps the static BLEServer and its services, so
+    // re-creating them after a disable duplicated the OTA service.
+    bool stack_initialized_ = false;
     bool debug_stream_active;
     unsigned long enable_time;
     unsigned long timeout_ms;

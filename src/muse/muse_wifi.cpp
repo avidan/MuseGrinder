@@ -32,6 +32,9 @@
 #include "controllers/grind_mode.h"
 #include "hardware/WeightSensor.h"
 #include "system/simulation_mode.h"
+#include "system/board_id.h"
+#include "system/crash_log.h"
+#include "muse_ota.h"
 
 #include <atomic>
 
@@ -110,19 +113,21 @@ static bool museParseGrams(float* grams) {
 }
 
 static void museHandleStatus() {
-    char buf[320];
+    char buf[400];
     snprintf(buf, sizeof(buf),
         "{\"grinding\":%s,\"weight_g\":%.2f,\"target_g\":%.1f,"
         "\"next_dose_g\":%.1f,\"profile\":\"%s\","
         "\"mode\":\"weight\",\"last_result\":\"%s\","
-        "\"simulated\":%s,\"firmware\":\"musegrinder-muse/1.0\"}",
+        "\"simulated\":%s,\"build\":%d,\"board\":\"%s\",\"reset_reason\":\"%s\","
+        "\"firmware\":\"musegrinder-muse/1.0\"}",
         museIsGrinding() ? "true" : "false",
         s_ws->get_display_weight(),
         s_gc->get_target_weight(),
         museNextDose(),
         s_pc->get_current_name(),
         museResultName(s_gc->get_last_session_result()),
-        SimulationMode::enabled() ? "true" : "false");
+        SimulationMode::enabled() ? "true" : "false",
+        BUILD_NUMBER, BoardId::id(), CrashLog::reset_reason());
     museServer.send(200, "application/json", buf);
 }
 
@@ -266,6 +271,7 @@ void museWifiSetup(GrindController* gc, WeightSensor* ws, ProfileController* pc)
     museServer.on("/stop", HTTP_POST, museHandleStop);
     museServer.on("/last", HTTP_GET, museHandleLast);
     museServer.on("/dose", HTTP_POST, museHandleDose);
+    museOtaRegister(museServer, s_gc);
     museServer.onNotFound([]() {
         if (s_apActive) { // captive portal: send every unknown URL to the form
             museServer.sendHeader("Location", "http://192.168.4.1/");

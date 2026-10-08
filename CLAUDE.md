@@ -17,6 +17,7 @@ python3 tools/grinder.py analyze
 **Common Commands:**
 - `python3 tools/grinder.py build` - Build firmware only
 - `python3 tools/grinder.py upload` - Upload latest firmware via BLE
+- `python3 tools/wifi_upload.py` - Upload firmware over WiFi to `musegrinder.local` (preferred once the grinder is on WiFi; `--env ...-v2` for V2 boards)
 - `python3 tools/grinder.py export` - Export grind data to database
 - `python3 tools/grinder.py report` - Launch Streamlit report from existing data
 - `python3 tools/grinder.py scan` - Scan for BLE devices
@@ -57,6 +58,10 @@ python3 tools/grinder.py analyze
 - **Preferences**: `chute_mode` (int: 0=Prime, 1=Purge, default=1), `chute_amount_g` (float: 0.1-5.0, default=1.0)
 
 **Simulation Mode:** Menu → Tools → Simulation (NVS `simulation/enabled`, read once at boot by `SimulationMode::load()` in `src/system/simulation_mode.*`; changing it restarts the device). When active, `MockHX711Driver` replaces the HX711 (weight rises at `DEBUG_MOCK_FLOW_RATE_GPS` = 2.0 g/s while the motor is "on", with start delay/ramp/coast), the motor relay is never initialized or driven, calibration is fixed and not saved, and the background uses `THEME_COLOR_BACKGROUND_MOCK`. Check `SimulationMode::enabled()` instead of `DEBUG_ENABLE_LOADCELL_MOCK`; the `-mock` build env forces it on.
+
+**WiFi OTA:** `POST /ota` on the Muse HTTP server (`src/muse/muse_ota.*`) streams a full image into the spare app slot (sequential erase), refuses while grinding, and only boots it if it validates and its board marker (`src/system/board_id.*`) matches. The password is generated on first build into the gitignored `.ota_password` and compiled in as `MUSE_OTA_PASSWORD` (`tools/build-scripts/pre_ota_secret.py`); `tools/wifi_upload.py` reads it.
+
+**BLE stack lifetime:** the BLE stack and GATT services are created once per boot; `disable()` only stops advertising and drops the client. Arduino's `BLEDevice::deinit(false)` keeps the static `BLEServer`, so re-creating services after a deinit duplicated the OTA service.
 
 **Crash Log:** `LOG_BLE`, `BluetoothManager::log()` and ESP-IDF `ESP_LOGx` are mirrored into a 2KB RTC-memory ring buffer (`src/system/crash_log.*`) that survives panics, watchdog resets and `esp_restart()`. `python3 tools/grinder.py info` shows the last reset reason; `python3 tools/grinder.py diagnostics` includes the log from before the last reset and this boot's recent log. Use it to debug boards without USB.
 
